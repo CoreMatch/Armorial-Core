@@ -54,7 +54,7 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 		"site": map[string]interface{}{
 			"name":           "HRPAuth",
 			"implementation": "HRPAuth core service",
-			"version":        "62526",
+			"version":        "1.3.0",
 		},
 		"server": map[string]interface{}{
 			"port":        ":2778",

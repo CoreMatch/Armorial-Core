@@ -10,7 +10,7 @@ HRPAuth is a general-purpose authentication core service and the OAuth2 authoriz
 
 ### 1. Prerequisites
 
-- Go 1.26 or higher
+- Go 1.26.10 (see `go.mod`)
 - MySQL
 - Redis
 - An SMTP server (for verification emails)
@@ -101,7 +101,7 @@ treats it as read-only):
 
 - Listens on `:2778` (public); health probe `GET /health`.
 - Requires MySQL and Redis; no startup dependency on other HA services.
-- Config file `config.yaml` (template version 14); database migrations run
+- Config file `config.yaml` (template version 15); database migrations run
   automatically on startup.
 - Data dirs: `./data/sdk_packages`, `./cache/verification_codes`.
 
