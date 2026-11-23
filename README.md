@@ -1,175 +1,27 @@
-# HRPAuth
+<div align="center">
+  <h1>HRPAuth</h1>
+  <p><strong>Your identity. Your services. Your control.</strong></p>
+  <p><a href="./README.zh-CN.md">简体中文</a></p>
+</div>
 
-[中文说明](README.zh-CN.md)
+HRPAuth is a self-hosted identity and OAuth2 authorization center for server owners and services in the HA ecosystem.
 
-HRPAuth is a general-purpose authentication core service and the OAuth2 authorization center of the HA ecosystem: accounts, login, and multi-factor security for your users, plus OAuth2 issuance for the services around it.
+It provides account security, client and token management, and service registration without acting as a Yggdrasil or skin service itself.
 
-> **Scope note:** The Yggdrasil protocol and skin/texture features are **not** part of this repository. They were split out on 2026-10-06 and now live in dedicated microservices: [HRPAuth-Yggdrasil-API](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API), [HASkinLib](https://github.com/CoreMatch/HASkinLib) and [HASkinProxy](https://github.com/CoreMatch/HASkinProxy).
+## Why HRPAuth
 
-## Quick Start
+- **Own the login experience.** Keep user accounts and authorization inside your deployment.
+- **Layer account protection.** Combine email verification and captcha with TOTP, passkeys/WebAuthn, and email 2FA.
+- **Plan for recovery.** Give users recovery keys when their usual second factor is unavailable.
+- **Manage ecosystem access.** Register OAuth2 clients, issue and manage tokens, and maintain service registries.
+- **Keep trust self-hosted.** Run the identity boundary alongside the services that depend on it.
 
-### 1. Prerequisites
+## Learn more
 
-- Go 1.26.10 (see `go.mod`)
-- MySQL
-- Redis
-- An SMTP server (for verification emails)
+- [Deployment guide](https://wiki.mcnb.dev/deploy/hrpauth) — running HRPAuth
+- [Docker image](https://hub.docker.com/r/limeight/ha-hrpauth) — published container image
+- [HA-Contract](https://github.com/CoreMatch/HA-Contract) — ecosystem API contracts
 
-### 2. Clone and run
+## License & provenance
 
-```bash
-git clone https://github.com/CoreMatch/HRPAuth.git
-cd HRPAuth
-
-# First run: config.yaml is generated automatically (configuration only — no keys or certificates are generated)
-go run main.go
-```
-
-### 3. Configure and restart
-
-Edit the required fields in the generated `config.yaml` (see [Configuration](#configuration)), then build and run:
-
-```bash
-go build -o HRPAuth
-./HRPAuth
-```
-
-## Configuration
-
-On first start the service generates `config.yaml` with defaults. Adjust at
-least `database`, `redis`, `smtp`, `server.port`, `callback.url` and
-`frontend.url` before production use, then restart.
-
-- Complete configuration reference (schema versions, all fields, defaults):
-  [HRPAuth-Wiki — HRPAuth configuration](https://wiki.mcnb.dev/deploy/hrpauth)
-- Database migrations (commands, baseline layout, rules):
-  [HRPAuth-Wiki — HRPAuth data & migrations](https://wiki.mcnb.dev/dev/hrpauth)
-
-## Deployment
-
-### Single binary
-
-```bash
-./build.sh   # = go build -o ./build/HRPAuth
-```
-
-Pre-built binaries for six platforms are kept under [`build/`](build): darwin / linux / windows × amd64 / arm64.
-
-### Container image
-
-The image is published on Docker Hub: [`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth) — a `linux/amd64` + `linux/arm64` multi-arch image (manifest list); release tag `1.3.0-865274e` alongside `latest`, and the effective reference is pinned by the manifest list digest recorded in [`deploy-manifest.yaml`](deploy-manifest.yaml). The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
-
-The multi-stage [Dockerfile](Dockerfile) is kept for local builds (`docker build -t hrpauth .`); deployment references should use the published image.
-
-### Platform orchestration (Compose)
-
-HRPAuth is the core of the HA platform, but in production it runs as one service among many. The whole stack is brought up with one command from the Compose template kept in [HA-Cupbearer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Cupbearer/blob/main/deploy/docker-compose.yml):
-
-```bash
-git clone https://github.com/CoreMatch/HA-Cupbearer.git
-cd HA-Cupbearer/deploy
-cp .env.example .env   # database / Redis addresses, OAuth clients, keys, upstream URLs
-docker compose up -d --build
-```
-
-| Service | Image | Port | Role |
-|---|---|---|---|
-| **HRPAuth** | `ha/hrpauth` | 2778 | Account and OAuth2 authorization core |
-| HRPAuth-Yggdrasil-API | `ha/hrpauth-yggdrasil-api` | 2770 | Yggdrasil protocol provider |
-| HASkinLib | `ha/haskinlib` | 2701 | Texture upload, storage and preview |
-| HASkinProxy | `ha/haskinproxy` | 2702 | Skin service proxy for CustomSkinLoader clients |
-| WinnerProxy | `ha/winnerproxy` | 2777 | Yggdrasil request routing proxy |
-| HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK aggregation and compilation |
-| MatchCoreArena-Server | `ha/mca-server` | 9178 | Match core service |
-| HA-Cupbearer | `ha/ha-cupbearer` | 18080 | Manifest-driven deployment backend |
-| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 2771 | Operations interface |
-
-How the orchestration is wired:
-
-- MySQL and Redis are **not** started by the stack; the services reach external instances through the `DB_*` / `REDIS_*` variables in `.env`.
-- Each service's `config.yaml` is rendered from a template in `deploy/config/` at container startup, so database addresses, upstream URLs and secrets are all driven by `.env`.
-- Inter-service calls use container names (for example `http://hrpauth:2778`), so no fixed host addresses are baked into the images.
-- The `ha/*` image names above are the local tags this template builds; the published registry images live under `limeight/ha-*` on Docker Hub (multi-arch, referenced by pinned manifest list digests).
-- After the one-command trigger, day-to-day container lifecycle (restart policy, healthchecks) is managed by docker compose itself. HA-Cupbearer's design intent is orchestrating microservices **without** containers — bare-metal orchestration is its main path; the container path is a one-click trigger, plus implemented container-level management capabilities (digest-priority pulls, container health probing, digest-pinned rollback) available as an option.
-
-### Deployment facts
-
-Authoritative deployment facts live in [`deploy-manifest.yaml`](deploy-manifest.yaml)
-at the repo root (consumed by HA-Cupbearer's orchestrator;
-`manager: aapanel` means the process is panel-managed and the orchestrator
-treats it as read-only):
-
-- Listens on `:2778` (public); health probe `GET /health`.
-- Requires MySQL and Redis; no startup dependency on other HA services.
-- Config file `config.yaml` (template version 15); database migrations run
-  automatically on startup.
-- Data dirs: `./data/sdk_packages`, `./cache/verification_codes`.
-
-## Features
-
-- Registration, login and logout with email verification
-- Captcha protection
-- TOTP two-factor authentication
-- WebAuthn / passkey login and second factor
-- Email-based second factor
-- Recovery keys
-- Username and email changes
-- Account deletion
-
-## Service Integration
-
-Other services in the HA ecosystem can register with this service and be reached through it; for how that works, see the [microservices guide in HA-Contract](https://github.com/CoreMatch/HA-Contract/blob/main/docs/dev/HRPAuth/microservices.md).
-
-## API Documentation
-
-The business API contract (OpenAPI definition and error codes) is maintained in HA-Contract — see [API Standards & Specifications](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/README.md).
-
-## Related Projects
-
-**Core components**
-
-- [HRPAuth-Yggdrasil-API](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API): Yggdrasil protocol microservice split out of this project, serving Minecraft-oriented authentication, sessions and profiles.
-- [HRPAuth-WebUI](https://github.com/CoreMatch/HRPAuth-WebUI): Official web frontend for login, account management and second-factor setup.
-- [HA-Contract](https://github.com/CoreMatch/HA-Contract): API contracts, OpenAPI definitions, error codes and the documentation center of the ecosystem.
-
-**Companion services**
-
-- [WinnerProxy](https://github.com/CoreMatch/WinnerProxy): Yggdrasil request routing proxy.
-- [HASkinLib](https://github.com/CoreMatch/HASkinLib): Texture upload, storage, retrieval and preview service (pairs with HRPAuth-Yggdrasil-API).
-- [HASkinProxy](https://github.com/CoreMatch/HASkinProxy): Proxy that makes the ecosystem's skin service usable by CustomSkinLoader clients (pairs with HRPAuth-Yggdrasil-API).
-- [HA-WebUI-SDKHandler](https://github.com/CoreMatch/HA-WebUI-SDKHandler): Aggregates the services' WebUI extensions into the main web interface.
-- [HRPAuth-Spigot](https://github.com/CoreMatch/HRPAuth-Spigot): Velocity plugin that binds in-game identities to platform accounts.
-
-**Tools & operations**
-
-- [BS2HA](https://github.com/CoreMatch/BS2HA): Offline migration tool from BlessingSkin to HRPAuth.
-- [HA-Cupbearer](https://github.com/CoreMatch/HA-Cupbearer): Manifest-driven deployment backend.
-- [HA-Services-MaintenanceView](https://github.com/CoreMatch/HA-Services-MaintenanceView): Operations interface for project setup and deployment management.
-
-**Documentation & portal**
-
-- [HRPAuth-Wiki](https://wiki.mcnb.dev/): Developer wiki.
-- [MatchCore-Portal](https://github.com/CoreMatch/MatchCore-Portal): Bilingual portal site of the wider ecosystem.
-
-**Client**
-
-- [SamuelClient](https://github.com/CoreMatch/SamuelClient): Minecraft launcher with support for self-hosted authentication.
-
-**Historical**
-
-- [HRPAuth-Backend-PHP](https://github.com/CoreMatch/HRPAuth-Backend-PHP): Early PHP backend (archived on GitHub, 2026-08-14).
-- [HRPAuth-Legacy](https://github.com/CoreMatch/HRPAuth-Legacy): The original "HRPAuth" umbrella repository (historical archive, inactive since 2026-04-21).
-- [PHP-zggdrasil-mock](https://github.com/CoreMatch/PHP-zggdrasil-mock): Yggdrasil mock server from the PHP era (inactive since 2026-06-19).
-- [PHP-yggdrasil-api-debugger](https://github.com/CoreMatch/PHP-yggdrasil-api-debugger): Yggdrasil protocol debugging workbench from the PHP era (inactive since 2026-06-19).
-
-## Documentation
-
-All API documentation and development specifications are centralized in HA-Contract:
-
-- [API Standards & Specifications](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/README.md)
-- [OpenAPI Definition](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/openapi/hrpauth-business.yaml)
-- [Error Codes](https://github.com/CoreMatch/HA-Contract/blob/main/docs/api/error-codes.md)
-
-## License
-
-This project is licensed under the [AGPL 3.0 License](LICENSE).
+[AGPL-3.0](LICENSE). Source: [CoreMatch/HRPAuth](https://github.com/CoreMatch/HRPAuth).
