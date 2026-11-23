@@ -57,7 +57,7 @@ go build -o HRPAuth
 
 ### 容器镜像
 
-镜像已发布到 Docker Hub：[`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth)——`linux/amd64` + `linux/arm64` 多架构镜像（manifest list）；tag 为 `<版本>-<短SHA>`，并列 `latest`，生效引用以 [`deploy-manifest.yaml`](deploy-manifest.yaml) 登记的 manifest list digest 为准。镜像以非 root 用户运行同一二进制，暴露端口 `2778`。[入口脚本](docker-entrypoint.sh)可在启动前用环境变量渲染配置模板（`CONFIG_TEMPLATE` / `RENDERED_CONFIG`）。
+镜像已发布到 Docker Hub：[`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth)——`linux/amd64` + `linux/arm64` 多架构镜像（manifest list）；发布 tag `1.3.0-865274e` 并列 `latest`，生效引用以 [`deploy-manifest.yaml`](deploy-manifest.yaml) 登记的 manifest list digest 为准。镜像以非 root 用户运行同一二进制，暴露端口 `2778`。[入口脚本](docker-entrypoint.sh)可在启动前用环境变量渲染配置模板（`CONFIG_TEMPLATE` / `RENDERED_CONFIG`）。
 
 多阶段 [Dockerfile](Dockerfile) 保留用于本地构建（`docker build -t hrpauth .`）；部署引用以已发布镜像为准。
 

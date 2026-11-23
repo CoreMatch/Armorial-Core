@@ -57,7 +57,7 @@ Pre-built binaries for six platforms are kept under [`build/`](build): darwin / 
 
 ### Container image
 
-The image is published on Docker Hub: [`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth) — a `linux/amd64` + `linux/arm64` multi-arch image (manifest list); tags follow `<version>-<short SHA>` alongside `latest`, and the effective reference is pinned by the manifest list digest recorded in [`deploy-manifest.yaml`](deploy-manifest.yaml). The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
+The image is published on Docker Hub: [`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth) — a `linux/amd64` + `linux/arm64` multi-arch image (manifest list); release tag `1.3.0-865274e` alongside `latest`, and the effective reference is pinned by the manifest list digest recorded in [`deploy-manifest.yaml`](deploy-manifest.yaml). The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
 
 The multi-stage [Dockerfile](Dockerfile) is kept for local builds (`docker build -t hrpauth .`); deployment references should use the published image.
 
