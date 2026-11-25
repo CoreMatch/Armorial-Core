@@ -4,7 +4,7 @@
   <p><a href="./README.md">English</a></p>
 </div>
 
-Armorial 是面向 HA 生态站长与服务的自托管身份认证与 OAuth2 授权中心。
+Armorial 是面向 Armorial 生态站长与服务的自托管身份认证与 OAuth2 授权中心。
 
 它提供账号安全、客户端与令牌管理以及服务注册，但本身不充当 Yggdrasil 或皮肤服务。
 
@@ -18,9 +18,9 @@ Armorial 是面向 HA 生态站长与服务的自托管身份认证与 OAuth2 �
 
 ## 进一步了解
 
-- [部署指南](https://wiki.mcnb.dev/deploy/hrpauth) — 运行 Armorial
+- [部署指南](https://wiki.mcnb.dev/deploy/armorial) — 运行 Armorial
 - [Docker 镜像](https://hub.docker.com/r/limeight/ha-hrpauth) — 已发布的容器镜像
-- [HA-Contract](https://github.com/CoreMatch/HA-Contract) — 生态 API 契约
+- [Armorial 契约](https://github.com/CoreMatch/HA-Contract) — 生态 API 契约
 
 ## 许可证与来源
 

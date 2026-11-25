@@ -10,7 +10,7 @@ not meant to make external projects accommodate this one.
 ## Order of Authority
 
 This knowledge base **does not define outward behavior**. Outward behavior of the
-HA ecosystem is defined by [HA-Contract](https://github.com/CoreMatch/HA-Contract)
+Armorial ecosystem is defined by [Armorial Contract](https://github.com/CoreMatch/HA-Contract)
 (OpenAPI specs under `docs/api/openapi/` and contract documents under `docs/`).
 If an entry here ever appears to contradict a contract, **the contract wins and
 the entry is stale — fix the entry, never the contract**, and surface the

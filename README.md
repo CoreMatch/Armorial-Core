@@ -4,7 +4,7 @@
   <p><a href="./README.zh-CN.md">简体中文</a></p>
 </div>
 
-Armorial is a self-hosted identity and OAuth2 authorization center for server owners and services in the HA ecosystem.
+Armorial is a self-hosted identity and OAuth2 authorization center for server owners and services in the Armorial ecosystem.
 
 It provides account security, client and token management, and service registration without acting as a Yggdrasil or skin service itself.
 
@@ -18,9 +18,9 @@ It provides account security, client and token management, and service registrat
 
 ## Learn more
 
-- [Deployment guide](https://wiki.mcnb.dev/deploy/hrpauth) — running Armorial
+- [Deployment guide](https://wiki.mcnb.dev/deploy/armorial) — running Armorial
 - [Docker image](https://hub.docker.com/r/limeight/ha-hrpauth) — published container image
-- [HA-Contract](https://github.com/CoreMatch/HA-Contract) — ecosystem API contracts
+- [Armorial Contract](https://github.com/CoreMatch/HA-Contract) — ecosystem API contracts
 
 ## License & provenance
 
