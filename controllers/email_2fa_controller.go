@@ -91,7 +91,7 @@ func (ec *Email2FAController) SendCode(c *gin.Context) {
 		return
 	}
 
-	subject := "HRPAuth - 2FA Verification Code"
+	subject := "Armorial - 2FA Verification Code"
 	message := "Your 2FA verification code is: " + code + "\n\nThis code is valid for 10 minutes. If you did not request this, please change your password immediately."
 
 	err = ec.emailService.SendMail(user.Email, subject, message)

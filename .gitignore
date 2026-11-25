@@ -1,5 +1,7 @@
 hrpauth
 hrpauth-backend
+armorial
+armorial-backend
 build/*
 .trae
 .devcontainer

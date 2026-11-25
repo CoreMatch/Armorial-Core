@@ -2,7 +2,7 @@
 
 # Data Models
 
-HRPAuth is split into two services: the **Core** service (General Auth) and the **Yggdrasil-API** service (Minecraft logic).
+Armorial is split into two services: the **Core** service (General Auth) and the **Yggdrasil-API** service (Minecraft logic).
 
 ## Core Service Models
 
@@ -91,7 +91,7 @@ Proxy-registered users are normally unable to log in to the business system beca
 
 Implementation status: implemented on 2026-11-05. HRPAuth-Yggdrasil-API
 serves `POST /admin/claim-user`; the core user provisioning happens through
-the HRPAuth core internal endpoint `POST /internal/claim-user`
+the Armorial core internal endpoint `POST /internal/claim-user`
 (`X-Internal-Key`). Steps:
 
 1. Reject when no game account exists for the profile name (`404 user_not_found`) or the account has `cbh=1` (`409 user_not_claimable`).
@@ -115,7 +115,7 @@ Players who have both a proxy-registered account (cbh=0, created by WinnerProxy)
 Implementation status: implemented on 2026-11-05; authentication switched
 from the retired `manage.token` to the service-token tier on 2026-11-05.
 HRPAuth-Yggdrasil-API serves `POST /admin/force-bind`; the target
-credentials are verified through the HRPAuth core internal endpoint
+credentials are verified through the Armorial core internal endpoint
 `POST /internal/verify-credentials` (`X-Internal-Key`). Steps:
 
 1. Require a service token carrying `user.force-bind.as-service` (same tier as `/admin/claim-user`).
@@ -151,7 +151,7 @@ Side effects: the proxy-registered account is permanently deleted. A target acco
 
 ### `password`
 
-- **Native HRPAuth write format**: bcrypt.
+- **Native Armorial write format**: bcrypt.
 - **BlessingSkin migration contract**:
   - source method = `BCRYPT` -> copy the existing bcrypt hash directly
   - source method != `BCRYPT` -> write the fixed invalid marker `BS2HA$RESET_REQUIRED`

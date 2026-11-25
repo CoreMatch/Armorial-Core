@@ -78,7 +78,7 @@ func (usc *UserSecurityController) SendChangeEmailCode(c *gin.Context) {
 		return
 	}
 
-	subject := "HRPAuth - Email Change Verification Code"
+	subject := "Armorial - Email Change Verification Code"
 	message := "Your verification code for changing email is: " + code + "\n\nIf you did not request this, please secure your account immediately."
 
 	err := usc.emailService.SendMail(user.Email, subject, message)

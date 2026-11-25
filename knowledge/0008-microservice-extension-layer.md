@@ -2,43 +2,43 @@
 
 # Microservice Extension Layer
 
-This document describes the microservice extension mechanism of HRPAuth. It covers service registration, compile-time SDK aggregation, route rules, relay rules, webhook hook rules, request orchestration, and the three-level auth model.
+This document describes the microservice extension mechanism of Armorial. It covers service registration, compile-time SDK aggregation, route rules, relay rules, webhook hook rules, request orchestration, and the three-level auth model.
 
 ## Design Positioning
 
-HRPAuth is the **core standard service**: its request parameters, response structures, status codes, and semantics strictly follow external standards and **cannot be extended in the core flow**.
+Armorial is the **core standard service**: its request parameters, response structures, status codes, and semantics strictly follow external standards and **cannot be extended in the core flow**.
 
 Therefore, all microservice extensions happen **outside the main service flow**:
 
 - **Pre-flow routing**: decides, for each incoming request, whether it should be forwarded to a microservice before (or instead of) reaching the main service.
 - **Post-flow routing**: after the main service produces a response, dispatches the result to designated microservices for side processing.
 
-The extension layer is an **edge orchestrator / router**, not a plugin system. It never changes HRPAuth's internal business decisions. The standard response is passed through unchanged by default; post-processing is executed out-of-band.
+The extension layer is an **edge orchestrator / router**, not a plugin system. It never changes Armorial's internal business decisions. The standard response is passed through unchanged by default; post-processing is executed out-of-band.
 
 ```
 Frontend
   -> Extension Layer (relay / orchestration middlewares)
-       -> HRPAuth core (standard, unmodified)
+       -> Armorial core (standard, unmodified)
        -> Microservices (pre routing / post routing)
        -> Specialized Business Services (e.g., Yggdrasil-API)
 ```
 
 ## Specialized Business Services
 
-Certain domain-specific logic is moved into independent services to keep the HRPAuth core clean and generic:
+Certain domain-specific logic is moved into independent services to keep the Armorial core clean and generic:
 
 ### Yggdrasil API Provider (`HRPAuth-Yggdrasil-API`)
 
 - **Role**: Implements Minecraft Yggdrasil protocols and game-specific account management.
 - **Business Scope**: Owns current-profile texture management (`/texture/get`, `/texture/upload/:uuid`, `DELETE /texture/delete/:uuid/:type`) and the generated preview surface (`GET /previews/:fileName`) for that management UI.
 - **Boundary**: Does **not** own texture discovery, texture-library history, or generic asset browsing semantics; those belong to dedicated asset-library services.
-- **Mapping**: Establishes a 1:1 fp=1ae2bfff mapping between HRPAuth core users and game accounts via `core_user_id`.
+- **Mapping**: Establishes a 1:1 fp=1ae2bfff mapping between Armorial core users and game accounts via `core_user_id`.
 - **Inheritance**: Game accounts inherit the core service's `username` at registration.
-- **Sync**: Pulls user data (like `username`) lazily from HRPAuth core via internal APIs and caches it in Redis; no longer relies on real-time push events to maintain consistency.
+- **Sync**: Pulls user data (like `username`) lazily from Armorial core via internal APIs and caches it in Redis; no longer relies on real-time push events to maintain consistency.
 
 ## Service Registration (`POST /services/presence`)
 
-Every extension participant registers its presence here. On the frontend side, **individual frontend instances no longer need to register presence**: the frontend consumes SDKs through the compile-time SDK aggregation pipeline (see [SDK Package Contract](0012-sdk-package-contract.md)) instead of runtime discovery. It announces its existence with a "bonjour" handshake; HRPAuth replies "ca va très bien, merci".
+Every extension participant registers its presence here. On the frontend side, **individual frontend instances no longer need to register presence**: the frontend consumes SDKs through the compile-time SDK aggregation pipeline (see [SDK Package Contract](0012-sdk-package-contract.md)) instead of runtime discovery. It announces its existence with a "bonjour" handshake; Armorial replies "ca va très bien, merci".
 
 ### Request
 
@@ -63,13 +63,13 @@ Every extension participant registers its presence here. On the frontend side, *
 | Field | Description |
 | --- | --- |
 | `name` | Unique service name. |
-| `ttl_seconds` | Optional self-declared lifetime in seconds. `<= 0` or omitted means **never expires**; the record is kept until the HRPAuth process exits. |
+| `ttl_seconds` | Optional self-declared lifetime in seconds. `<= 0` or omitted means **never expires**; the record is kept until the Armorial process exits. |
 | `scope` | Optional scope declaration. |
 | `scope.name` | Scope name of this service. |
 | `scope.frontend_areas` | Frontend mount areas this service covers. **Non-empty means the service is visible to the WebUI host**; omitted/empty means frontend-invisible (internal only). For first-party frontend integration, these areas are mount zones inside one WebUI, not multiple independent WebUIs or SDK hosts. |
 | `sdk_url` | **Removed.** This field was the legacy URL of a runtime JS usage file under the old SDK relay model. It is no longer part of `PresenceRequest` / `PresenceRecord`; SDKs are now delivered as source packages (see [SDK Package Contract](0012-sdk-package-contract.md)) and aggregated into the frontend at compile time, so no runtime URL is recorded anymore. |
 | `security_level` | Auth level of this service: `0` none / `1` user / `2` ops. Default `0`, clamped to `0..2`. Used by the universal relay to enforce authentication. |
-| `root_metadata` | Optional JSON object to be injected into the HRPAuth Core root (`/`) endpoint response. Allows microservices to provide top-level metadata (e.g., Yggdrasil server information). |
+| `root_metadata` | Optional JSON object to be injected into the Armorial Core root (`/`) endpoint response. Allows microservices to provide top-level metadata (e.g., Yggdrasil server information). |
 | `interacts_with` | Optional list of other services this service interacts with. By default a service is implicitly treated as interacting with the main service only. |
 
 ### Response
@@ -91,10 +91,10 @@ Repeated heartbeats keep `first_seen`, refresh `last_seen`, and may update all o
 
 ## Internal Service Authentication
 
-HRPAuth uses a dual-layered authentication mechanism for microservice communication:
+Armorial uses a dual-layered authentication mechanism for microservice communication:
 
-1.  **OAuth2 (Standard Auth)**: Used for all microservice -> HRPAuth Core API calls. Microservices must provide a Bearer token obtained via the `client_credentials` grant.
-2.  **Internal Key (Temporary Secret)**: Used for HRPAuth Core -> microservice callback calls. This key is dynamic, short-lived, and exists only in memory.
+1.  **OAuth2 (Standard Auth)**: Used for all microservice -> Armorial Core API calls. Microservices must provide a Bearer token obtained via the `client_credentials` grant.
+2.  **Internal Key (Temporary Secret)**: Used for Armorial Core -> microservice callback calls. This key is dynamic, short-lived, and exists only in memory.
 
 ### Service Client Registration
 
@@ -103,7 +103,7 @@ A microservice's `client_credentials` identity is a row in the core's
 seeding takes precedence, self-service registration is the fallback:
 
 1. **Config seeding (`oauth2.service_clients`)** — service clients declared
-   in the HRPAuth core config under `oauth2.service_clients` — a list of
+   in the Armorial core config under `oauth2.service_clients` — a list of
    `{ client_id, client_secret, name? }` entries — are seeded idempotently
    at core startup:
    - A missing row is created with `type=confidential`,
@@ -141,7 +141,7 @@ and satisfy ops (level 2) auth checks on core endpoints such as
 
 ### Temporary Key Acquisition (`POST /services/auth-key`)
 
-After a microservice has registered its presence, it must request a temporary internal key from HRPAuth.
+After a microservice has registered its presence, it must request a temporary internal key from Armorial.
 
 - **Auth**: Bearer token (OAuth2 Client Credentials).
 - **Request Body**:
@@ -149,8 +149,8 @@ After a microservice has registered its presence, it must request a temporary in
   { "name": "texture-service" }
   ```
 - **Logic**:
-    - HRPAuth verifies the service name matches the `client_id` or is a known registered service.
-    - HRPAuth generates a new 64-character random token.
+    - Armorial verifies the service name matches the `client_id` or is a known registered service.
+    - Armorial generates a new 64-character random token.
     - The token is stored in the `PresenceRegistry` (memory + Redis) associated with the service.
     - **Overwriting**: If a key already exists for the service name, it is overwritten by the new one, immediately invalidating the old instance's key.
 - **Response**:
@@ -164,7 +164,7 @@ After a microservice has registered its presence, it must request a temporary in
 
 ## Internal Service APIs
 
-These endpoints are provided by HRPAuth Core for microservices to query core data.
+These endpoints are provided by Armorial Core for microservices to query core data.
 
 ### Get User Info (`GET /services/users/:uuid`)
 
@@ -187,12 +187,12 @@ Retrieves basic user information by UUID.
 
 ## Heartbeat & Key Revocation
 
-HRPAuth Core runs a background worker to ensure microservices are alive and holding the correct key.
+Armorial Core runs a background worker to ensure microservices are alive and holding the correct key.
 
 - **Interval**: Every 10 minutes.
-- **Action**: HRPAuth sends a `GET /internal/heartbeat` request to each microservice that has an active `InternalKey`.
+- **Action**: Armorial sends a `GET /internal/heartbeat` request to each microservice that has an active `InternalKey`.
 - **Validation**: The request includes the `X-Internal-Key` header. The microservice must respond with `200 OK`.
-- **Revocation**: If the request fails (timeout, connection refused, or `401 Unauthorized`), HRPAuth **immediately revokes the key** in the registry. The service must re-register and re-fetch a key to resume operations.
+- **Revocation**: If the request fails (timeout, connection refused, or `401 Unauthorized`), Armorial **immediately revokes the key** in the registry. The service must re-register and re-fetch a key to resume operations.
 
 ## Compile-time SDK Aggregation
 
@@ -201,7 +201,7 @@ The runtime JS SDK model is **removed**. The legacy endpoints `GET /services/lis
 ### Data Flow
 
 ```
-Satellite service                    HRPAuth (main)                   HA-WebUI-SDKHandler
+Satellite service                    Armorial (main)                   HA-WebUI-SDKHandler
 --------------                       ----------------                 ---------------------
 POST /services/sdk-packages  ──►     validate + store (fs + Redis)
                                       GET /services/sdk-packages   ◄──  poll (ETag)
@@ -215,17 +215,17 @@ POST /services/sdk-packages  ──►     validate + store (fs + Redis)
 
 ### Upload
 
-A satellite service uploads a self-contained SDK package (a `tar.gz` or `zip` archive with exactly one root-level `manifest.json`) to HRPAuth via `POST /services/sdk-packages` (multipart/form-data, ops level 2 auth). HRPAuth validates the archive and the manifest, records the metadata (`name`/`version`/`sha256`/`size`/`routes`/`menu`/`dashboard`/`critical_operations`/`dependencies`/`run_scripts`), and stores the package under `StorageDir/<name>/archive` with a `.meta.json` sidecar. Uploading a package whose `name` already exists is **rejected with `409 sdk_package_conflict`**; replacing a package requires deleting it first (`DELETE /services/sdk-packages/{name}`).
+A satellite service uploads a self-contained SDK package (a `tar.gz` or `zip` archive with exactly one root-level `manifest.json`) to Armorial via `POST /services/sdk-packages` (multipart/form-data, ops level 2 auth). Armorial validates the archive and the manifest, records the metadata (`name`/`version`/`sha256`/`size`/`routes`/`menu`/`dashboard`/`critical_operations`/`dependencies`/`run_scripts`), and stores the package under `StorageDir/<name>/archive` with a `.meta.json` sidecar. Uploading a package whose `name` already exists is **rejected with `409 sdk_package_conflict`**; replacing a package requires deleting it first (`DELETE /services/sdk-packages/{name}`).
 
 ### Pull & Build
 
-The SDK handler (`HA-WebUI-SDKHandler`) talks to **HRPAuth only**: it polls `GET /services/sdk-packages` for the current package set and downloads each archive via `GET /services/sdk-packages/{name}/download`. HRPAuth signs the list response with an `ETag` (sha256 of the package list) and answers `304 Not Modified` on a matching `If-None-Match`. The handler sends its own fingerprint of the previously parsed list (sha256 over the parsed package metadata) as `If-None-Match`, and after every `200` it recomputes that fingerprint from the parsed response rather than storing the server-sent `ETag` header; a build is triggered when the fingerprint changes. For every build it copies the current frontend template, injects all SDK sources into `src/generated/services/<name>/`, merges npm dependencies, and compiles (`npm run build`, or `tsc -b` + `vite build` when the template has no build script; dependencies are installed once at template setup, not per build). Publishing replaces the configured fixed artifacts directory (`.tmp` staging, remove-then-rename); see `sdk-package.md` Build Policy for the exact current behavior.
+The SDK handler (`HA-WebUI-SDKHandler`) talks to **Armorial only**: it polls `GET /services/sdk-packages` for the current package set and downloads each archive via `GET /services/sdk-packages/{name}/download`. Armorial signs the list response with an `ETag` (sha256 of the package list) and answers `304 Not Modified` on a matching `If-None-Match`. The handler sends its own fingerprint of the previously parsed list (sha256 over the parsed package metadata) as `If-None-Match`, and after every `200` it recomputes that fingerprint from the parsed response rather than storing the server-sent `ETag` header; a build is triggered when the fingerprint changes. For every build it copies the current frontend template, injects all SDK sources into `src/generated/services/<name>/`, merges npm dependencies, and compiles (`npm run build`, or `tsc -b` + `vite build` when the template has no build script; dependencies are installed once at template setup, not per build). Publishing replaces the configured fixed artifacts directory (`.tmp` staging, remove-then-rename); see `sdk-package.md` Build Policy for the exact current behavior.
 
 ### Trust Boundary
 
-- Satellite services **absolutely trust HRPAuth**: all authentication is performed by HRPAuth (ops level 2) and satellite services never expose their own auth entry points to the WebUI.
-- The SDK handler pulls packages **from HRPAuth only**; it never reaches satellite services directly.
-- HRPAuth is the **single trusted broker** for SDK packages.
+- Satellite services **absolutely trust Armorial**: all authentication is performed by Armorial (ops level 2) and satellite services never expose their own auth entry points to the WebUI.
+- The SDK handler pulls packages **from Armorial only**; it never reaches satellite services directly.
+- Armorial is the **single trusted broker** for SDK packages.
 
 ### Package API
 
@@ -290,7 +290,7 @@ The following endpoints are **removed** and must not be used:
 
 The frontend has no runtime SDK module loader anymore; frontend integration surfaces (routes, navbar menu, dashboard items, Critical Operations links, Profile cards) are declared in `manifest.json` and materialized into the compiled bundle by the SDK handler.
 
-`routes` are required for every package: HRPAuth core upload validation rejects
+`routes` are required for every package: Armorial core upload validation rejects
 a missing or empty `routes` array even when `profile_cards` is declared.
 
 ## Route Rules (`POST /services/route`)
@@ -324,7 +324,7 @@ Rules are replaced as a whole per service (last registration wins).
 
 ## Relay Rules (`POST` / `DELETE` / `GET /services/relay`)
 
-A microservice asks HRPAuth to act as a relay for a URL mapping: requests hitting `dest` (a public path on the main service) are forwarded to `source` (the microservice address). Registration requires prior presence registration.
+A microservice asks Armorial to act as a relay for a URL mapping: requests hitting `dest` (a public path on the main service) are forwarded to `source` (the microservice address). Registration requires prior presence registration.
 
 ### Register
 
@@ -408,7 +408,7 @@ When an incoming request path matches rules with `pre_url`:
 
 ### Post-Routing (orchestration)
 
-After the main service responds with a **2xx** status, HRPAuth asynchronously POSTs `{path, method, request_id, status, response}` to every `post_url`. Non-2xx does not trigger. Post dispatch is out-of-band (side semantics); failures are ignored and do not affect the main response.
+After the main service responds with a **2xx** status, Armorial asynchronously POSTs `{path, method, request_id, status, response}` to every `post_url`. Non-2xx does not trigger. Post dispatch is out-of-band (side semantics); failures are ignored and do not affect the main response.
 
 ### Relay (independent mechanism)
 
@@ -433,4 +433,4 @@ Enforcement:
 
 Insufficient credentials: no credential → `401 oauth_login_required`; credential present but too weak → `403 insufficient_auth_level`.
 
-Post-routing dispatch is initiated by HRPAuth itself and is not subject to caller auth-level checks.
+Post-routing dispatch is initiated by Armorial itself and is not subject to caller auth-level checks.

@@ -4,14 +4,14 @@
 
 ## Context
 
-HRPAuth historically carried the Minecraft-specific Yggdrasil authentication
+Armorial historically carried the Minecraft-specific Yggdrasil authentication
 protocol and the skin/texture pipeline in addition to general-purpose account
 and OAuth2 logic. That coupling made the core heavy and forced every deployment
 to carry Minecraft concerns it may not need.
 
 ## Decision
 
-HRPAuth is positioned as a **general-purpose authentication core** only:
+Armorial is positioned as a **general-purpose authentication core** only:
 accounts, login, multi-factor security, and OAuth2 issuance. The Yggdrasil
 protocol and skin/texture features were **split out on 2026-10-06** into
 dedicated microservices: HRPAuth-Yggdrasil-API, HASkinLib, and HASkinProxy.
@@ -23,8 +23,8 @@ They are not part of this repository.
 
 ## Evidence
 
-- Positioning statement: `README.md:L5-L5 fp=2ae11f25 ~ HRPAuth is a general-purpose authentication core` ("general-purpose authentication core
-  service and the OAuth2 authorization center"), `README.md:L7-L7 fp=6bd0b11b ~ > **Scope note:** The Yggdrasil protocol and ski` (split-out note
+- Positioning statement: `README.md:L5-L5 fp=5eb51658 ~ Armorial is a general-purpose authentication core` ("general-purpose authentication core
+  service and the OAuth2 authorization center"), `README.md:L7-L7 fp=5348678b ~ > **Scope note:** The Yggdrasil protocol and ski` (split-out note
   with date 2026-10-06 and target services).
 - Current route table has no yggdrasil/texture/mojang endpoint:
   `main.go::main`.

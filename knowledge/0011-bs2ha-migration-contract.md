@@ -2,9 +2,9 @@
 
 # BS2HA Migration Contract
 
-This document defines the intended contract for the offline migration path from **BlessingSkin** data to **HRPAuth** data.
+This document defines the intended contract for the offline migration path from **BlessingSkin** data to **Armorial** data.
 
-The migration tool is expected to consume a BlessingSkin SQL dump and emit HRPAuth import artifacts. To ensure compatibility with the target HRPAuth database, the tool MAY utilize a baseline HA SQL template to wrap the imported data.
+The migration tool is expected to consume a BlessingSkin SQL dump and emit Armorial import artifacts. To ensure compatibility with the target Armorial database, the tool MAY utilize a baseline HA SQL template to wrap the imported data.
 
 ## Scope
 
@@ -13,13 +13,13 @@ The first supported migration path is:
 - Input:
   - a BlessingSkin MySQL/MariaDB SQL dump
   - the BlessingSkin `textures/` storage directory (optional; skip texture migration if missing)
-  - HRPAuth callback base URL
-  - HRPAuth Yggdrasil signing private key (optional; defaults to auto-generating a new key)
-  - a baseline HRPAuth core SQL file (`--ha-baseline-sql`, optional; provides table structure and constraints)
+  - Armorial callback base URL
+  - Armorial Yggdrasil signing private key (optional; defaults to auto-generating a new key)
+  - a baseline Armorial core SQL file (`--ha-baseline-sql`, optional; provides table structure and constraints)
   - a baseline HRPAuth-Yggdrasil-API SQL file (`--ygg-baseline-sql`, optional)
 - Output:
-  - an HRPAuth **core** SQL import file (`--ha-out-sql`; `users` rows)
-  - an HRPAuth **Yggdrasil-API** SQL import file (`--ygg-out-sql`; `accounts`, `profiles`, `profile_properties` rows)
+  - an Armorial **core** SQL import file (`--ha-out-sql`; `users` rows)
+  - an Armorial **Yggdrasil-API** SQL import file (`--ygg-out-sql`; `accounts`, `profiles`, `profile_properties` rows)
   - a migration report describing transformed rows, skipped rows, generated placeholders, and texture/signature status
 
 The tool is offline and file-based. It does not depend on direct access to the source BlessingSkin database.
@@ -29,7 +29,7 @@ The tool is offline and file-based. It does not depend on direct access to the s
 Following the 2026-10 service split, the migration tool writes to two
 databases:
 
-- HRPAuth core: `users`
+- Armorial core: `users`
 - HRPAuth-Yggdrasil-API: `accounts`, `profiles`, `profile_properties`
 
 The tool does **not** import runtime-only tables such as:
@@ -41,11 +41,11 @@ The tool does **not** import runtime-only tables such as:
 - `oauth2_refresh_tokens`
 - `oauth2_authorization_codes`
 
-These tables must start empty or be managed by HRPAuth itself after deployment.
+These tables must start empty or be managed by Armorial itself after deployment.
 
 ## User Mapping
 
-BlessingSkin `users.uid` is preserved as HRPAuth `users.uid`.
+BlessingSkin `users.uid` is preserved as Armorial `users.uid`.
 
 For each imported user:
 
@@ -57,7 +57,7 @@ For each imported user:
 
 ## Imported Username
 
-HRPAuth `users.username` MUST be imported directly from the canonical BlessingSkin username value carried by the source data.
+Armorial `users.username` MUST be imported directly from the canonical BlessingSkin username value carried by the source data.
 
 The migration tool MUST treat the BlessingSkin username as authoritative identity data rather than deriving it from unrelated fields such as nickname or email.
 
@@ -65,17 +65,17 @@ For the currently supported BlessingSkin SQL dump format, the canonical Blessing
 
 Rules:
 
-1. `users.username` in HRPAuth MUST equal the username value imported from BlessingSkin.
+1. `users.username` in Armorial MUST equal the username value imported from BlessingSkin.
 2. If the source dump does not provide a recoverable canonical BlessingSkin username for a user, the migration MUST fail that row and record it in the report.
 3. The tool MUST NOT silently synthesize replacement usernames from `email`, `uid`, or any non-canonical fallback.
 
 ## Profile Selection Rules
 
-BlessingSkin `players` are mapped into HRPAuth `profiles`, but the migration intentionally narrows the imported profile set.
+BlessingSkin `players` are mapped into Armorial `profiles`, but the migration intentionally narrows the imported profile set.
 
 For each BlessingSkin user:
 
-1. If the user has exactly one player, import that player as the only HRPAuth profile.
+1. If the user has exactly one player, import that player as the only Armorial profile.
 2. If the user has multiple players, keep **only** the player whose `players.name` equals the imported BlessingSkin username.
 3. If the user has multiple players and no player name matches the imported BlessingSkin username, treat the user as having no usable player.
 4. If the user has no usable player after the above rules, create a placeholder profile whose name is the imported BlessingSkin username.
@@ -83,7 +83,7 @@ For each BlessingSkin user:
 Additional rules:
 
 - Imported or generated profile IDs MUST be newly generated 32-character lowercase hex strings.
-- Imported or generated profile names MUST satisfy HRPAuth username/profile validation rules.
+- Imported or generated profile names MUST satisfy Armorial username/profile validation rules.
 - The report MUST record whether the profile was imported from BlessingSkin or auto-generated as a placeholder.
 - Non-selected BlessingSkin players MUST be listed in the migration report as dropped by rule, not silently ignored.
 
@@ -95,18 +95,18 @@ Rules:
 
 - BlessingSkin texture hashes are treated as the canonical texture file names.
 - Imported profile textures MUST be emitted as `profile_properties.name = 'textures'`.
-- `profile_properties.value` MUST contain the base64-encoded Yggdrasil textures payload expected by HRPAuth.
-- Texture URLs inside the payload MUST point to the target HRPAuth callback domain, not the legacy BlessingSkin domain.
-- `uploadableTextures` is runtime-derived by HRPAuth and does not need to be pre-inserted by the migration tool.
+- `profile_properties.value` MUST contain the base64-encoded Yggdrasil textures payload expected by Armorial.
+- Texture URLs inside the payload MUST point to the target Armorial callback domain, not the legacy BlessingSkin domain.
+- `uploadableTextures` is runtime-derived by Armorial and does not need to be pre-inserted by the migration tool.
 
 ### Texture Signature Requirement
 
-For production imports, the migration tool MUST sign imported `textures` properties using an HRPAuth Yggdrasil private key so that signed profile responses remain valid immediately after cut-over.
+For production imports, the migration tool MUST sign imported `textures` properties using an Armorial Yggdrasil private key so that signed profile responses remain valid immediately after cut-over.
 
 The tool MUST support the following key sources:
 1. **Existing Key**: A file path to an existing PEM-encoded private key.
 2. **Pasted Content**: Raw PEM-encoded private key content provided via CLI/TUI.
-3. **Auto-generation**: If no key is provided and unsigned mode is not explicitly enabled, the tool MUST auto-generate a new RSA 4096-bit private key and save it for future use by the HRPAuth server.
+3. **Auto-generation**: If no key is provided and unsigned mode is not explicitly enabled, the tool MUST auto-generate a new RSA 4096-bit private key and save it for future use by the Armorial server.
 
 If the signing key is absent and auto-generation is disabled, the tool MAY support an explicit non-production unsigned mode, but:
 
@@ -116,7 +116,7 @@ If the signing key is absent and auto-generation is disabled, the tool MAY suppo
 
 ## Model Mapping
 
-BlessingSkin texture model types map to HRPAuth profile model values as follows:
+BlessingSkin texture model types map to Armorial profile model values as follows:
 
 - `steve` -> `default`
 - `alex` -> `slim`
@@ -130,9 +130,9 @@ The migration tool MUST determine the BlessingSkin password method from the sour
 
 Rules:
 
-- If the source password method is `BCRYPT`, the existing BlessingSkin `users.password` hash MUST be copied directly into HRPAuth `users.password`.
+- If the source password method is `BCRYPT`, the existing BlessingSkin `users.password` hash MUST be copied directly into Armorial `users.password`.
 - If the source password method is anything other than `BCRYPT`, the migration tool MUST NOT attempt legacy-password compatibility verification.
-- For non-`BCRYPT` imports, HRPAuth `users.password` MUST be written as a fixed invalid marker that forces the user into the password reset flow.
+- For non-`BCRYPT` imports, Armorial `users.password` MUST be written as a fixed invalid marker that forces the user into the password reset flow.
 
 The fixed invalid marker for non-`BCRYPT` imports is:
 
@@ -140,9 +140,9 @@ The fixed invalid marker for non-`BCRYPT` imports is:
 
 Operational consequences:
 
-- Native HRPAuth password generation remains bcrypt.
+- Native Armorial password generation remains bcrypt.
 - Imported non-`BCRYPT` users are expected to regain access through password reset, not direct password reuse.
-- HRPAuth MAY detect the fixed marker to present a clearer reset-required message, but multi-verifier login support is not part of this migration contract.
+- Armorial MAY detect the fixed marker to present a clearer reset-required message, but multi-verifier login support is not part of this migration contract.
 
 ## Output Ordering
 
@@ -172,5 +172,5 @@ The migration report MUST include at least:
 
 This migration contract requires follow-up implementation work in:
 
-- `HRPAuth`: optional reset-required UX for the fixed invalid password marker
+- `Armorial`: optional reset-required UX for the fixed invalid password marker
 - `BS2HA`: dump parser, mapper, password-method inspection, texture copier, SQL emitter, and reporting

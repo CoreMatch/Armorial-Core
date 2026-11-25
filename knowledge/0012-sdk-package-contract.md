@@ -2,7 +2,7 @@
 
 # SDK Package Contract (Static Compile-Time Aggregation)
 
-This document defines the **SDK package** format exchanged between the HRPAuth
+This document defines the **SDK package** format exchanged between the Armorial
 main service and the WebUI SDK handler (`HA-WebUI-SDKHandler`). It replaces the
 old runtime JS SDK model (`sdk_url` + `window['<service-name>-sdk']`) with a
 compile-time aggregation model: SDKs are shipped as self-contained source
@@ -10,22 +10,22 @@ packages, aggregated into a generated frontend, and compiled by the SDK handler.
 
 ## Design Positioning
 
-- HRPAuth is the **single trusted broker** for SDK packages. Satellite
-  services upload SDK packages to HRPAuth; the SDK handler pulls them from
-  HRPAuth only. The handler never reaches satellite services directly.
-- HRPAuth **validates** every uploaded package (archive safety, manifest
+- Armorial is the **single trusted broker** for SDK packages. Satellite
+  services upload SDK packages to Armorial; the SDK handler pulls them from
+  Armorial only. The handler never reaches satellite services directly.
+- Armorial **validates** every uploaded package (archive safety, manifest
   correctness, conflict policy) before accepting it.
 - The SDK handler aggregates all accepted packages into a fresh frontend build
   and publishes the compiled static assets to its configured artifacts
   directory.
 - Satellite services are deployed by the same operator as the WebUI; all
-  satellite services are absolutely trusted by HRPAuth, and all authentication
-  is performed by HRPAuth (Level 2 / Ops).
+  satellite services are absolutely trusted by Armorial, and all authentication
+  is performed by Armorial (Level 2 / Ops).
 
 ## Data Flow
 
 ```
-Satellite service                    HRPAuth (main)                   HA-WebUI-SDKHandler
+Satellite service                    Armorial (main)                   HA-WebUI-SDKHandler
 --------------                       ----------------                 ---------------------
 POST /services/sdk-packages  ──►     validate + store (fs + Redis)
                                      GET /services/sdk-packages   ◄──  poll (fingerprint)
@@ -63,7 +63,7 @@ example-service-sdk.tar.gz
 ```
 
 - Relative paths inside the archive are preserved on injection.
-- Path traversal (`..`, absolute paths) is rejected by HRPAuth and again by the
+- Path traversal (`..`, absolute paths) is rejected by Armorial and again by the
   SDK handler.
 - Symbolic links and hard links are rejected.
 - Allowed source extensions: `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`,
@@ -72,7 +72,7 @@ example-service-sdk.tar.gz
 
 ### Size Limits
 
-- Maximum uncompressed and compressed package size is enforced by HRPAuth
+- Maximum uncompressed and compressed package size is enforced by Armorial
   (`sdk_packages.max_package_size`, default `20971520` = 20 MiB).
 - Exceeding the limit returns `413 sdk_package_too_large`.
 
@@ -127,9 +127,9 @@ example-service-sdk.tar.gz
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `schema_version` | int | yes | Manifest schema version. Currently `1`. |
-| `name` | string | yes | Unique service name. `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, max 64 chars. Uniquely identifies the package on HRPAuth. |
+| `name` | string | yes | Unique service name. `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, max 64 chars. Uniquely identifies the package on Armorial. |
 | `version` | string | yes | Semantic version (`major.minor.patch`). |
-| `routes` | array | yes | Non-empty list of route entries (see below). HRPAuth core upload validation rejects every package whose `routes` is missing or empty, regardless of any `profile_cards`. |
+| `routes` | array | yes | Non-empty list of route entries (see below). Armorial core upload validation rejects every package whose `routes` is missing or empty, regardless of any `profile_cards`. |
 | `routes[].path` | string | yes | Route path, MUST start with `/`, MUST NOT end with `/` (except root `/`), MUST NOT contain `?`/`#`/`..` segments. Becomes a React Router path. |
 | `routes[].module` | string | yes | Relative path to a TS/TSX module inside the package (extension optional). The module MUST have a **default export** React component (used with `React.lazy`). MUST be inside the package (no `..`, no absolute path). |
 | `routes[].title` | string | no | Optional document title hint. |
@@ -179,7 +179,7 @@ example-service-sdk.tar.gz
 - Dependency conflicts are **not** detected at upload time; they surface as a
   build failure in the SDK handler, which keeps the previous published version.
 
-## Validation Rules (enforced by HRPAuth at upload)
+## Validation Rules (enforced by Armorial at upload)
 
 1. Archive format must be `tar.gz` or `zip`.
 2. Archive must contain exactly one root-level `manifest.json`.

@@ -4,7 +4,7 @@
 
 This document clarifies all Tokens and their lifecycles involved in the project. **This is the most complex part of the project**, and it is strongly recommended that any integrator read it in full.
 
-> Since the 2026-10 service split, the Yggdrasil token system (sections 1–5 and 6.1) is implemented by the [`HRPAuth-Yggdrasil-API`](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API) service; the OAuth2 token system (sections 6.2–6.3) remains in the [`HRPAuth`](https://github.com/CoreMatch/HRPAuth) core.
+> Since the 2026-10 service split, the Yggdrasil token system (sections 1–5 and 6.1) is implemented by the [`HRPAuth-Yggdrasil-API`](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API) service; the OAuth2 token system (sections 6.2–6.3) remains in the [`Armorial`](https://github.com/CoreMatch/Armorial) core.
 
 > This document merges the sections "Token System Overview" and "Token State Machine and Lifecycle" from the original `API_DOC.md`.
 
@@ -184,7 +184,7 @@ B will now also be rejected by `/validate` and `/join`, but retains the ability 
 
 ### 6.2 OAuth2 Token Cleanup
 
-`runOnce` in [`controllers/oauth2_cleanup_controller.go`](https://github.com/CoreMatch/HRPAuth/blob/main/controllers/oauth2_cleanup_controller.go) is triggered at `main.go` startup + every 24 hours. Logic in [`services/oauth2_service.go`](https://github.com/CoreMatch/HRPAuth/blob/main/services/oauth2_service.go):
+`runOnce` in [`controllers/oauth2_cleanup_controller.go`](https://github.com/CoreMatch/Armorial/blob/main/controllers/oauth2_cleanup_controller.go) is triggered at `main.go` startup + every 24 hours. Logic in [`services/oauth2_service.go`](https://github.com/CoreMatch/Armorial/blob/main/services/oauth2_service.go):
 
 **Access Token** (`oauth2_access_tokens`):
 - DELETE rows where `expires_at < now()` — token 已过期。

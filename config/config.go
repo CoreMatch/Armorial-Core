@@ -127,7 +127,7 @@ type ManageConfig struct {
 	Token string
 }
 
-// SecurityConfig is the HRPAuth-specific security settings (registration/login UX).
+// SecurityConfig is the Armorial-specific security settings (registration/login UX).
 type SecurityConfig struct {
 	PasswordCost         int
 	RateLimitMaxAttempts int
@@ -469,7 +469,7 @@ func parseServiceClients(oauth2 map[string]interface{}) []ServiceClientConfig {
 	return out
 }
 
-// parseSecurityConfig parses the top-level `security` section (HRPAuth-specific).
+// parseSecurityConfig parses the top-level `security` section (Armorial-specific).
 func parseSecurityConfig(config map[string]interface{}) SecurityConfig {
 	security, _ := config["security"].(map[string]interface{})
 	maxAttempts := getInt(security, "rate_limit_max_attempts")

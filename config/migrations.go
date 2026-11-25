@@ -348,7 +348,7 @@ func migrateV2ToV3(cfg map[string]interface{}, tokenGen func() string) error {
 		topSec = map[string]interface{}{}
 	}
 
-	// Fields that belong to the top-level HRPAuth security section in v3.
+	// Fields that belong to the top-level Armorial security section in v3.
 	movedFields := []string{
 		"password_cost",
 		"rate_limit_max_attempts",

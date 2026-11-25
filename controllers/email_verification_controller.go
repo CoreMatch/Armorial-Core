@@ -107,7 +107,7 @@ func (evc *EmailVerificationController) sendVerificationCode(c *gin.Context, req
 		return
 	}
 
-	subject := "HRPAuth - Email Verification Code"
+	subject := "Armorial - Email Verification Code"
 	message := "Your verification code is: " + code + "\n\nThe code is valid for 10 minutes. Please complete the verification as soon as possible.\n\nIf you did not request this code, please ignore this email."
 
 	err := evc.emailService.SendMail(email, subject, message)

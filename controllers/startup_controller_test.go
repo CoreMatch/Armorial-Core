@@ -147,6 +147,50 @@ func TestBuildDefaultConfigMatchesCurrentSchema(t *testing.T) {
 	}
 }
 
+func TestBuildDefaultConfigUsesArmorialBrand(t *testing.T) {
+	sc := NewStartupController()
+	cfg := sc.buildDefaultConfig()
+
+	site, ok := cfg["site"].(map[string]interface{})
+	if !ok {
+		t.Fatal("site section missing from generated config")
+	}
+	if site["name"] != "Armorial" {
+		t.Errorf("site.name = %v, want Armorial", site["name"])
+	}
+	if site["implementation"] != "Armorial core service" {
+		t.Errorf("site.implementation = %v, want Armorial core service", site["implementation"])
+	}
+
+	smtp, ok := cfg["smtp"].(map[string]interface{})
+	if !ok {
+		t.Fatal("smtp section missing from generated config")
+	}
+	if smtp["from_name"] != "Armorial" {
+		t.Errorf("smtp.from_name = %v, want Armorial", smtp["from_name"])
+	}
+
+	webauthn, ok := cfg["webauthn"].(map[string]interface{})
+	if !ok {
+		t.Fatal("webauthn section missing from generated config")
+	}
+	if webauthn["rp_display_name"] != "Armorial" {
+		t.Errorf("webauthn.rp_display_name = %v, want Armorial", webauthn["rp_display_name"])
+	}
+
+	oauth2, ok := cfg["oauth2"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2 section missing from generated config")
+	}
+	// Brand changes must not rotate machine identifiers used by existing clients.
+	if oauth2["public_client_id"] != "hrpauth-webui" {
+		t.Errorf("public_client_id = %v, want stable identifier hrpauth-webui", oauth2["public_client_id"])
+	}
+	if oauth2["super_client_id"] != "hrpauth-internal-super" {
+		t.Errorf("super_client_id = %v, want stable identifier hrpauth-internal-super", oauth2["super_client_id"])
+	}
+}
+
 // TestBuildDefaultConfigCarriesHASkinLibServiceClient pins the HASkinLib
 // service-client seed (PENDING #13, option A): fresh configs must carry the
 // seed entry — fixed client_id "haskinlib", a generated secret (same

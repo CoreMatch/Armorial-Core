@@ -142,7 +142,7 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		response := gin.H{
 			"success": true,
-			"message": "HRPAuth core service is running.",
+			"message": "Armorial core service is running.",
 			"site": gin.H{
 				"name":           config.AppConfig.Site.Name,
 				"implementation": config.AppConfig.Site.Implementation,

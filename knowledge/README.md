@@ -2,7 +2,7 @@
 
 ## What This Is
 
-This knowledge base is **HRPAuth's memo to itself**. It serves self-hosting and
+This knowledge base is **Armorial's memo to itself**. It serves self-hosting and
 maintenance of this repository: implementation orientation, internal boundaries,
 and why things are the way they are. It is maintained alongside the code and is
 not meant to make external projects accommodate this one.
@@ -45,7 +45,7 @@ Each entry is one page in ADR style:
 | [0008](0008-microservice-extension-layer.md) | Microservice Extension Layer (presence/SDK/route/relay/hook/orchestration/auth levels) | accepted |
 | [0009](0009-token-system.md) | Token System and Lifecycles | accepted |
 | [0010](0010-data-models.md) | Data Models (Core + Yggdrasil-API) | accepted |
-| [0011](0011-bs2ha-migration-contract.md) | BS2HA Migration Contract (BlessingSkin → HRPAuth) | accepted |
+| [0011](0011-bs2ha-migration-contract.md) | BS2HA Migration Contract (BlessingSkin → Armorial) | accepted |
 | [0012](0012-sdk-package-contract.md) | SDK Package Contract (Static Compile-Time Aggregation) | accepted |
 
 Entries 0008–0012 were migrated back from HA-Contract on 2026-11-07

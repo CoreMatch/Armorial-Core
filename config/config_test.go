@@ -5,7 +5,7 @@ import "testing"
 func TestParseWebAuthnConfigNormalizesFallbackOrigins(t *testing.T) {
 	cfg := map[string]interface{}{
 		"site": map[string]interface{}{
-			"name": "HRPAuth",
+			"name": "Armorial",
 		},
 		"frontend": map[string]interface{}{
 			"url": "https://auth.example.com/app/",

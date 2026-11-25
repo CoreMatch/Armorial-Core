@@ -1,1 +1,1 @@
-go build -o ./build/HRPAuth
+go build -o ./build/Armorial

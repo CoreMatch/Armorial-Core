@@ -405,7 +405,7 @@ func (ac *AuthController) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	subject := "HRPAuth - Password Recovery"
+	subject := "Armorial - Password Recovery"
 	message := "Your password recovery code is: " + code + "\n\nThe code is valid for 10 minutes. If you did not request this, please ignore this email."
 
 	if err := emailService.SendMail(email, subject, message); err != nil {

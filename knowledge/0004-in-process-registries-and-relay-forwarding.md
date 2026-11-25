@@ -4,7 +4,7 @@
 
 ## Context
 
-HRPAuth sits at the center of a set of sibling microservices (Yggdrasil-API,
+Armorial sits at the center of a set of sibling microservices (Yggdrasil-API,
 skin services, SDK handler) that must discover each other, register forwarding
 rules, and hook into the auth flow. The core also distributes WebUI "SDK
 packages" (archives) that a separate handler pulls. A choice was needed between

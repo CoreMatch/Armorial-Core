@@ -4,19 +4,19 @@
 
 ## Context
 
-HRPAuth must run both as a self-contained binary on a host and as a container
+Armorial must run both as a self-contained binary on a host and as a container
 in the platform's compose orchestration. Database availability at boot cannot be
 guaranteed (MySQL may start after the core), so startup must tolerate a missing
 database without crash-looping.
 
 ## Decision
 
-HRPAuth ships **two deployment forms**:
+Armorial ships **two deployment forms**:
 
-1. **Single binary** — built via `build.sh` (`go build -o ./build/HRPAuth`);
+1. **Single binary** — built via `build.sh` (`go build -o ./build/Armorial`);
    prebuilt binaries for six platforms (darwin/linux/windows × amd64/arm64)
    are kept under `build/` — locally only: `build/*` is gitignored
-   (`.gitignore:L3 fp=01abafe3`), so the binaries are not committed and a fresh clone
+   (`.gitignore:L5-L5 fp=01abafe3`), so the binaries are not committed and a fresh clone
    must build them itself via `build.sh`.
 2. **Container image** — a multi-stage `Dockerfile`: builder stage
    `golang:1.26.4-alpine` producing a static binary, runtime stage `alpine:3.22`
@@ -41,16 +41,15 @@ database_not_ready` instead of failing.
 
 ## Evidence
 
-- Single binary: `README.md:L50-L56 fp=ff8dc18b ~ Single binary` ("Single binary" + `build.sh`); prebuilt
-  binaries present under `build/` (working tree only — `build/*` ignored per
-  `.gitignore:L3 fp=01abafe3`); `README.zh-CN.md:L50-L50 fp=dde0b9bc ~ 单二进制`.
-- Container image: `Dockerfile:L2-L10 fp=b4aa0ebb` (builder `golang:${GO_VERSION}-alpine`,
+- Single binary: `build.sh:L1-L1 fp=8c976939` builds `./build/Armorial`; binaries
+  under `build/` are working-tree only (`build/*` is ignored by `.gitignore:L5-L5 fp=01abafe3`).
+- Container image: `Dockerfile:L2-L10 fp=516dca94` (builder `golang:${GO_VERSION}-alpine`,
   static build), `Dockerfile:L12-L14 fp=be571ff4` + `Dockerfile:L22 fp=41c56520` (runtime
   `alpine:3.22`, non-root uid 10001), `Dockerfile:L21 fp=35a5e0c2` (`EXPOSE 2778`),
-  `Dockerfile:L23-L24 fp=32607912` (entrypoint/cmd); introduced by `7c391d8`.
+  `Dockerfile:L23-L24 fp=8e0f5249` (entrypoint/cmd); introduced by `7c391d8`.
 - Config rendering for compose: `docker-entrypoint.sh::envsubst` (`envsubst`
-  when `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); compose orchestration
-  described in `README.md:L64-L94 fp=c972ed82 ~ Platform orchestration (Compose)`.
+  when `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); deployment metadata is declared
+  in `deploy-manifest.yaml (field: container)`.
 - Startup flow: `main.go::main`, `main.go::main` (config load + async DB
   init), `main.go::RegisterOnConnect` (OnConnect callback), `main.go::main`
   (redis), `main.go::main` (`r.Run`).

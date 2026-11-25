@@ -97,7 +97,7 @@ func (os *OAuth2Service) upsertBuiltInPublicClient(tx *gorm.DB) error {
 
 	values := map[string]any{
 		"client_secret": "",
-		"name":          "HRPAuth WebUI",
+		"name":          "Armorial WebUI",
 		"type":          "public",
 		"grant_types":   grantTypesJSON,
 		"redirect_uris": redirectURIsJSON,
@@ -113,7 +113,7 @@ func (os *OAuth2Service) upsertBuiltInPublicClient(tx *gorm.DB) error {
 		client = models.OAuth2Client{
 			ClientID:     config.AppConfig.OAuth2.PublicClientID,
 			ClientSecret: "",
-			Name:         "HRPAuth WebUI",
+			Name:         "Armorial WebUI",
 			Type:         "public",
 			GrantTypes:   grantTypesJSON,
 			RedirectURIs: redirectURIsJSON,
@@ -155,7 +155,7 @@ func (os *OAuth2Service) upsertBuiltInSuperClient(tx *gorm.DB) error {
 	}
 	values := map[string]any{
 		"client_secret": "(config)",
-		"name":          "HRPAuth Internal Super Client",
+		"name":          "Armorial Internal Super Client",
 		"type":          "confidential",
 		"grant_types":   grantTypesJSON,
 		"redirect_uris": "[]",
@@ -171,7 +171,7 @@ func (os *OAuth2Service) upsertBuiltInSuperClient(tx *gorm.DB) error {
 		client = models.OAuth2Client{
 			ClientID:     config.AppConfig.OAuth2.SuperClientID,
 			ClientSecret: "(config)",
-			Name:         "HRPAuth Internal Super Client",
+			Name:         "Armorial Internal Super Client",
 			Type:         "confidential",
 			GrantTypes:   grantTypesJSON,
 			RedirectURIs: "[]",

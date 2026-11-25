@@ -4,7 +4,7 @@
 
 ## Context
 
-HRPAuth is the OAuth2 authorization center of the HA ecosystem. It must issue
+Armorial is the OAuth2 authorization center of the HA ecosystem. It must issue
 tokens to a first-party web frontend, to internal microservices calling each
 other, and support a privileged internal client used for service-to-service
 operations. Scopes need to distinguish user-facing, service-facing, and
@@ -12,7 +12,7 @@ database-level access.
 
 ## Decision
 
-HRPAuth embeds a full OAuth2 authorization server and seeds built-in clients at
+Armorial embeds a full OAuth2 authorization server and seeds built-in clients at
 boot:
 
 - Endpoints under `/oauth/...`: `authorize`, `login-ticket`,
@@ -23,8 +23,8 @@ boot:
   (`services/oauth2_service.go::ValidateAuthorizationRequest`,
   `services/oauth2_service.go::verifyPKCE`).
 - Two built-in clients are ensured at startup (`main.go::EnsureBuiltInClients`):
-  a **public** client "HRPAuth WebUI" and an internal **super client**
-  "HRPAuth Internal Super Client"
+  a **public** client "Armorial WebUI" and an internal **super client**
+  "Armorial Internal Super Client"
   (`services/oauth2_service.go::upsertBuiltInPublicClient`,
   `services/oauth2_service.go::upsertBuiltInSuperClient`). The super client
   allows only `client_credentials`, is flagged `is_super`/`is_internal`, and
@@ -133,7 +133,7 @@ boot:
   `services/oauth2_service.go::EnsureBuiltInClients`,
   `services/oauth2_service.go::upsertBuiltInPublicClient` (public WebUI
   client), `services/oauth2_service.go::upsertBuiltInSuperClient` (name
-  "HRPAuth Internal Super Client", `client_credentials`-only, `is_super`).
+  "Armorial Internal Super Client", `client_credentials`-only, `is_super`).
 - Config-driven service-client seeding:
   `services/oauth2_service.go::ensureConfiguredServiceClients`; config
   fields `config/config.go::ServiceClientConfig`

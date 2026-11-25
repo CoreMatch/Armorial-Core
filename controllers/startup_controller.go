@@ -52,8 +52,8 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 	return map[string]interface{}{
 		"version": config.ConfigVersion,
 		"site": map[string]interface{}{
-			"name":           "HRPAuth",
-			"implementation": "HRPAuth core service",
+			"name":           "Armorial",
+			"implementation": "Armorial core service",
 			"version":        "1.3.0",
 		},
 		"server": map[string]interface{}{
@@ -94,7 +94,7 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 			"username":   "",
 			"password":   "",
 			"from_email": "no-reply@mcnb.dev",
-			"from_name":  "HRPAuth",
+			"from_name":  "Armorial",
 		},
 		"manage": map[string]interface{}{
 			"token": sc.generateManageToken(),
@@ -107,7 +107,7 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 			"captcha_ttl":             300,
 		},
 		"webauthn": map[string]interface{}{
-			"rp_display_name": "HRPAuth",
+			"rp_display_name": "Armorial",
 			"rp_id":           "auth.mcnb.dev",
 			"rp_origins": []string{
 				strings.TrimRight(frontendURL, "/"),
