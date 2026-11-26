@@ -208,6 +208,8 @@ func main() {
 		api.POST("/internal/verify-credentials", authCtrl.VerifyCredentials)
 		api.POST("/internal/verify-token", authCtrl.VerifyToken)
 		api.POST("/internal/claim-user", authCtrl.ClaimUserInternal)
+		api.GET("/internal/migrations/:migration_id", authCtrl.MigrationStatusInternal)
+		api.POST("/internal/migrations/:migration_id/rollback", authCtrl.MigrationRollbackInternal)
 		api.POST("/internal/user-exists", authCtrl.UserExists)
 		api.POST("/user", userInfoCtrl.GetUser)
 		api.DELETE("/user", userInfoCtrl.DeleteAccount)

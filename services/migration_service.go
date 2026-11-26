@@ -12,10 +12,12 @@ import (
 )
 
 var (
-	ErrMigrationConflict      = errors.New("migration_conflict")
-	ErrMigrationInvalidState  = errors.New("migration_invalid_state")
-	ErrUsernameAlreadyBound   = errors.New("username_already_bound")
-	ErrEmailAlreadyRegistered = errors.New("email_already_registered")
+	ErrMigrationConflict           = errors.New("migration_conflict")
+	ErrMigrationInvalidState       = errors.New("migration_invalid_state")
+	ErrMigrationNotFound           = errors.New("migration_not_found")
+	ErrMigrationRollbackNotAllowed = errors.New("migration_rollback_not_allowed")
+	ErrUsernameAlreadyBound        = errors.New("username_already_bound")
+	ErrEmailAlreadyRegistered      = errors.New("email_already_registered")
 )
 
 type ClaimUserInput struct {
@@ -31,6 +33,28 @@ type ClaimUserResult struct {
 	UUID    string
 	Email   string
 	Created bool
+}
+
+type CoreMigrationUser struct {
+	UID      uint   `json:"uid"`
+	UUID     string `json:"uuid"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Present  bool   `json:"present"`
+}
+
+type MigrationStatusResult struct {
+	MigrationID string             `json:"migration_id"`
+	Status      string             `json:"status"`
+	Ownership   string             `json:"ownership"`
+	User        *CoreMigrationUser `json:"user,omitempty"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+type MigrationRollbackResult struct {
+	MigrationID string `json:"migration_id"`
+	Status      string `json:"status"`
+	UID         uint   `json:"uid,omitempty"`
 }
 
 type MigrationService struct{}
@@ -150,4 +174,110 @@ func existingMigrationUser(tx *gorm.DB, journal models.CoreUserMigration) (Claim
 		return ClaimUserResult{}, ErrMigrationConflict
 	}
 	return ClaimUserResult{UID: user.UID, UUID: user.UUID, Email: user.Email}, nil
+}
+
+func (s *MigrationService) Status(migrationID string) (MigrationStatusResult, error) {
+	var journal models.CoreUserMigration
+	if err := database.DB.Where("migration_id = ?", migrationID).First(&journal).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return MigrationStatusResult{}, ErrMigrationNotFound
+		}
+		return MigrationStatusResult{}, err
+	}
+
+	result := MigrationStatusResult{
+		MigrationID: journal.MigrationID,
+		Status:      journal.Status,
+		Ownership:   journal.Ownership,
+		UpdatedAt:   journal.UpdatedAt,
+	}
+	if journal.UUID != "" {
+		result.User = &CoreMigrationUser{
+			UID: journal.UID, UUID: journal.UUID, Email: journal.Email, Username: journal.Username,
+		}
+		var user models.User
+		err := database.DB.Where("uuid = ?", journal.UUID).First(&user).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return MigrationStatusResult{}, err
+		}
+		if err == nil && user.DeletedAt == nil {
+			result.User.UID = user.UID
+			result.User.Email = user.Email
+			result.User.Username = user.Username
+			result.User.Present = true
+		}
+	}
+	return result, nil
+}
+
+func (s *MigrationService) Rollback(migrationID string) (MigrationRollbackResult, error) {
+	var result MigrationRollbackResult
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		var journal models.CoreUserMigration
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("migration_id = ?", migrationID).First(&journal).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrMigrationNotFound
+			}
+			return err
+		}
+		if journal.Ownership != "created_by_migration" {
+			return ErrMigrationRollbackNotAllowed
+		}
+		if journal.Status != "created" && journal.Status != "rolled_back" {
+			return ErrMigrationRollbackNotAllowed
+		}
+		if journal.UID == 0 || journal.UUID == "" || journal.Email == "" || journal.Username == "" {
+			return ErrMigrationRollbackNotAllowed
+		}
+
+		var user models.User
+		userErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("uuid = ?", journal.UUID).First(&user).Error
+		if userErr != nil && !errors.Is(userErr, gorm.ErrRecordNotFound) {
+			return userErr
+		}
+		if userErr == nil {
+			if user.UID != journal.UID || user.Email != journal.Email || user.Username != journal.Username {
+				return ErrMigrationRollbackNotAllowed
+			}
+			if journal.Status == "rolled_back" {
+				return ErrMigrationRollbackNotAllowed
+			}
+		} else {
+			var uidConflict models.User
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("uid = ?", journal.UID).First(&uidConflict).Error; err == nil {
+				return ErrMigrationRollbackNotAllowed
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+
+		if err := tx.Where("user_id = ?", journal.UUID).Delete(&models.OAuth2AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", journal.UUID).Delete(&models.OAuth2AccessToken{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", journal.UUID).Delete(&models.OAuth2RefreshToken{}).Error; err != nil {
+			return err
+		}
+		if userErr == nil {
+			deletion := tx.Where("uuid = ? AND uid = ?", journal.UUID, journal.UID).Delete(&models.User{})
+			if deletion.Error != nil {
+				return deletion.Error
+			}
+			if deletion.RowsAffected != 1 {
+				return ErrMigrationRollbackNotAllowed
+			}
+		}
+
+		now := time.Now()
+		if err := tx.Model(&models.CoreUserMigration{}).Where("migration_id = ?", migrationID).Updates(map[string]any{
+			"status": "rolled_back", "rolled_back_at": now, "updated_at": now,
+		}).Error; err != nil {
+			return err
+		}
+		result = MigrationRollbackResult{MigrationID: migrationID, Status: "rolled_back", UID: journal.UID}
+		return nil
+	})
+	return result, err
 }

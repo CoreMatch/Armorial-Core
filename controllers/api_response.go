@@ -91,6 +91,9 @@ const (
 	CodeSdkPackageTooLarge             = "sdk_package_too_large"
 	CodeMigrationConflict              = "migration_conflict"
 	CodeMigrationInvalidState          = "migration_invalid_state"
+	CodeMigrationNotFound              = "migration_not_found"
+	CodeMigrationRollbackNotAllowed    = "migration_rollback_not_allowed"
+	CodeMigrationRollbackFailed        = "migration_rollback_failed"
 	CodeInternalError                  = "internal_error"
 )
 

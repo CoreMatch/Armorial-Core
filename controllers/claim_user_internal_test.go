@@ -31,8 +31,18 @@ func setupClaimTestEnv(t *testing.T) *gin.Engine {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.CoreUserMigration{}); err != nil {
+	if err := db.AutoMigrate(
+		&models.User{}, &models.CoreUserMigration{},
+		&models.OAuth2AuthorizationCode{}, &models.OAuth2RefreshToken{},
+	); err != nil {
 		t.Fatalf("automigrate: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE oauth2_access_tokens (
+		id INTEGER PRIMARY KEY, access_token TEXT, client_id TEXT, user_id TEXT,
+		scopes TEXT, subject_type TEXT, target_uid INTEGER, target_email TEXT,
+		expires_at DATETIME, revoked_at DATETIME, created_at DATETIME
+	)`).Error; err != nil {
+		t.Fatalf("create access token table: %v", err)
 	}
 	database.DB = db
 
@@ -40,7 +50,10 @@ func setupClaimTestEnv(t *testing.T) *gin.Engine {
 	config.AppConfig.Manage.Token = "test-manage-token"
 
 	r := gin.New()
-	r.POST("/internal/claim-user", NewAuthController().ClaimUserInternal)
+	auth := NewAuthController()
+	r.POST("/internal/claim-user", auth.ClaimUserInternal)
+	r.GET("/internal/migrations/:migration_id", auth.MigrationStatusInternal)
+	r.POST("/internal/migrations/:migration_id/rollback", auth.MigrationRollbackInternal)
 	return r
 }
 
@@ -60,6 +73,17 @@ func doAuthRequest(t *testing.T, r *gin.Engine, token, path, body string) *httpt
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func doMigrationRequest(t *testing.T, r *gin.Engine, method, token, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -394,4 +418,185 @@ func TestPlaceholderAccountsCannotUseEmailRecovery(t *testing.T) {
 			t.Fatal("mail service accepted a placeholder recipient")
 		}
 	})
+}
+
+func TestMigrationStatusInternalReportsCreatedUser(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	claim := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","password":"secret1","migration_id":"`+migrationID+`","email_mode":"placeholder"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("claim = %d %s", claim.Code, claim.Body.String())
+	}
+
+	w := doMigrationRequest(t, r, http.MethodGet, "test-manage-token", "/internal/migrations/"+migrationID)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d %s", w.Code, w.Body.String())
+	}
+	data := claimEnvelope(t, w)["data"].(map[string]any)
+	user := data["user"].(map[string]any)
+	if data["status"] != "created" || data["ownership"] != "created_by_migration" || user["present"] != true || user["username"] != "steve" {
+		t.Fatalf("unexpected status: %#v", data)
+	}
+}
+
+func TestMigrationRollbackInternalCompensatesCreatedUserAndIsIdempotent(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	claim := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","password":"secret1","migration_id":"`+migrationID+`","email_mode":"placeholder"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("claim = %d %s", claim.Code, claim.Body.String())
+	}
+	var user models.User
+	if err := database.DB.Where("username = ?", "steve").First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	uid := user.UUID
+	if err := database.DB.Create(&models.OAuth2AuthorizationCode{Code: "code", UserID: uid}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.Create(&models.OAuth2AccessToken{AccessToken: "access", UserID: &uid}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.Create(&models.OAuth2RefreshToken{RefreshToken: "refresh", UserID: uid}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		w := doMigrationRequest(t, r, http.MethodPost, "test-manage-token", "/internal/migrations/"+migrationID+"/rollback")
+		if w.Code != http.StatusOK {
+			t.Fatalf("rollback attempt %d = %d %s", attempt, w.Code, w.Body.String())
+		}
+		data := claimEnvelope(t, w)["data"].(map[string]any)
+		if data["status"] != "rolled_back" {
+			t.Fatalf("rollback data = %#v", data)
+		}
+	}
+
+	for _, model := range []any{&models.User{}, &models.OAuth2AuthorizationCode{}, &models.OAuth2AccessToken{}, &models.OAuth2RefreshToken{}} {
+		var count int64
+		if err := database.DB.Model(model).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("%T count = %d, want 0", model, count)
+		}
+	}
+	var journal models.CoreUserMigration
+	if err := database.DB.Where("migration_id = ?", migrationID).First(&journal).Error; err != nil {
+		t.Fatal(err)
+	}
+	if journal.Status != "rolled_back" || journal.RolledBackAt == nil {
+		t.Fatalf("journal = %+v", journal)
+	}
+	status := doMigrationRequest(t, r, http.MethodGet, "test-manage-token", "/internal/migrations/"+migrationID)
+	data := claimEnvelope(t, status)["data"].(map[string]any)
+	if data["user"].(map[string]any)["present"] != false {
+		t.Fatalf("rolled-back status = %#v", data)
+	}
+}
+
+func TestMigrationRollbackInternalPreservesPreexistingUser(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	if err := database.DB.Create(&models.User{
+		UID: 7, UUID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Email: "steve@example.com", Username: "steve", Password: "hash",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	claim := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","email":"steve@example.com","password":"secret1","migration_id":"`+migrationID+`"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("claim = %d %s", claim.Code, claim.Body.String())
+	}
+
+	w := doMigrationRequest(t, r, http.MethodPost, "test-manage-token", "/internal/migrations/"+migrationID+"/rollback")
+	if w.Code != http.StatusConflict || claimEnvelope(t, w)["code"] != CodeMigrationRollbackNotAllowed {
+		t.Fatalf("rollback = %d %s", w.Code, w.Body.String())
+	}
+	var count int64
+	if err := database.DB.Model(&models.User{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("preexisting user count = %d, want 1", count)
+	}
+}
+
+func TestMigrationRollbackInternalRejectsIdentityMismatch(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	claim := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","email":"steve@example.com","password":"secret1","migration_id":"`+migrationID+`"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("claim = %d %s", claim.Code, claim.Body.String())
+	}
+	if err := database.DB.Model(&models.User{}).Where("username = ?", "steve").Update("email", "changed@example.com").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := doMigrationRequest(t, r, http.MethodPost, "test-manage-token", "/internal/migrations/"+migrationID+"/rollback")
+	if w.Code != http.StatusConflict || claimEnvelope(t, w)["code"] != CodeMigrationRollbackNotAllowed {
+		t.Fatalf("rollback = %d %s", w.Code, w.Body.String())
+	}
+	var user models.User
+	if err := database.DB.Where("username = ?", "steve").First(&user).Error; err != nil {
+		t.Fatalf("mismatched user was removed: %v", err)
+	}
+}
+
+func TestMigrationRollbackInternalRejectsReusedUID(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	claim := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","password":"secret1","migration_id":"`+migrationID+`","email_mode":"placeholder"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("claim = %d %s", claim.Code, claim.Body.String())
+	}
+	var journal models.CoreUserMigration
+	if err := database.DB.Where("migration_id = ?", migrationID).First(&journal).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.Where("uuid = ?", journal.UUID).Delete(&models.User{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.Create(&models.User{
+		UID: journal.UID, UUID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Email: "other@example.com", Username: "other",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := doMigrationRequest(t, r, http.MethodPost, "test-manage-token", "/internal/migrations/"+migrationID+"/rollback")
+	if w.Code != http.StatusConflict || claimEnvelope(t, w)["code"] != CodeMigrationRollbackNotAllowed {
+		t.Fatalf("rollback = %d %s", w.Code, w.Body.String())
+	}
+	var replacement models.User
+	if err := database.DB.Where("uid = ?", journal.UID).First(&replacement).Error; err != nil {
+		t.Fatalf("replacement user was removed: %v", err)
+	}
+}
+
+func TestMigrationInternalEndpointsValidationAndAuth(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+
+	if w := doMigrationRequest(t, r, http.MethodGet, "", "/internal/migrations/"+migrationID); w.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d", w.Code)
+	}
+	if w := doMigrationRequest(t, r, http.MethodPost, "", "/internal/migrations/"+migrationID+"/rollback"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized rollback = %d", w.Code)
+	}
+	if w := doMigrationRequest(t, r, http.MethodGet, "test-manage-token", "/internal/migrations/not-a-uuid"); w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid status ID = %d", w.Code)
+	}
+	if w := doMigrationRequest(t, r, http.MethodPost, "test-manage-token", "/internal/migrations/not-a-uuid/rollback"); w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid rollback ID = %d", w.Code)
+	}
+	if w := doMigrationRequest(t, r, http.MethodGet, "test-manage-token", "/internal/migrations/"+migrationID); w.Code != http.StatusNotFound || claimEnvelope(t, w)["code"] != CodeMigrationNotFound {
+		t.Fatalf("missing status = %d %s", w.Code, w.Body.String())
+	}
+	if w := doMigrationRequest(t, r, http.MethodPost, "test-manage-token", "/internal/migrations/"+migrationID+"/rollback"); w.Code != http.StatusNotFound || claimEnvelope(t, w)["code"] != CodeMigrationNotFound {
+		t.Fatalf("missing rollback = %d %s", w.Code, w.Body.String())
+	}
 }

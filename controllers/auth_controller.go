@@ -243,6 +243,59 @@ func (ac *AuthController) ClaimUserInternal(c *gin.Context) {
 	})
 }
 
+func (ac *AuthController) MigrationStatusInternal(c *gin.Context) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
+		return
+	}
+	migrationID, ok := migrationIDFromPath(c)
+	if !ok {
+		return
+	}
+	result, err := services.NewMigrationService().Status(migrationID)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrMigrationNotFound):
+			respondError(c, http.StatusNotFound, CodeMigrationNotFound, "Migration not found")
+		default:
+			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to read migration state")
+		}
+		return
+	}
+	respondOK(c, "Migration state retrieved", result)
+}
+
+func (ac *AuthController) MigrationRollbackInternal(c *gin.Context) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
+		return
+	}
+	migrationID, ok := migrationIDFromPath(c)
+	if !ok {
+		return
+	}
+	result, err := services.NewMigrationService().Rollback(migrationID)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrMigrationNotFound):
+			respondError(c, http.StatusNotFound, CodeMigrationNotFound, "Migration not found")
+		case errors.Is(err, services.ErrMigrationRollbackNotAllowed):
+			respondError(c, http.StatusConflict, CodeMigrationRollbackNotAllowed, "Migration rollback is not allowed")
+		default:
+			respondError(c, http.StatusInternalServerError, CodeMigrationRollbackFailed, "Failed to roll back migration")
+		}
+		return
+	}
+	respondOK(c, "Migration rolled back", result)
+}
+
+func migrationIDFromPath(c *gin.Context) (string, bool) {
+	parsed, err := uuid.Parse(strings.TrimSpace(c.Param("migration_id")))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Invalid migration ID")
+		return "", false
+	}
+	return parsed.String(), true
+}
+
 // Register handles POST /register.
 func (ac *AuthController) Register(c *gin.Context) {
 	var req RegisterRequest
