@@ -7,6 +7,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
 
 type EmailVerificationController struct {
@@ -59,7 +60,7 @@ func (evc *EmailVerificationController) sendTestEmail(c *gin.Context, req EmailV
 		return
 	}
 
-	if !isValidEmail(to) {
+	if !isValidEmail(to) || utils.IsPlaceholderEmail(to) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid recipient email format")
 		return
 	}
@@ -89,7 +90,7 @@ func (evc *EmailVerificationController) sendTestEmail(c *gin.Context, req EmailV
 func (evc *EmailVerificationController) sendVerificationCode(c *gin.Context, req EmailVerificationRequest) {
 	email := req.Email
 
-	if !isValidEmail(email) {
+	if !isValidEmail(email) || utils.IsPlaceholderEmail(email) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
@@ -124,7 +125,7 @@ func (evc *EmailVerificationController) verifyCode(c *gin.Context, req EmailVeri
 	email := req.Email
 	code := req.Code
 
-	if !isValidEmail(email) {
+	if !isValidEmail(email) || utils.IsPlaceholderEmail(email) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}

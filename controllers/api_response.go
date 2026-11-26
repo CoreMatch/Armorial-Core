@@ -89,6 +89,8 @@ const (
 	CodeSdkPackageInvalidManifest      = "sdk_package_invalid_manifest"
 	CodeSdkPackageInvalidPath          = "sdk_package_invalid_path"
 	CodeSdkPackageTooLarge             = "sdk_package_too_large"
+	CodeMigrationConflict              = "migration_conflict"
+	CodeMigrationInvalidState          = "migration_invalid_state"
 	CodeInternalError                  = "internal_error"
 )
 

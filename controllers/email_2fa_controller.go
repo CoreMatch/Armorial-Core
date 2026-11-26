@@ -11,6 +11,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	appredis "github.com/lnb/HRPAuth-Backend-Go/redis"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
 
 type Email2FAController struct {
@@ -66,7 +67,7 @@ func (ec *Email2FAController) SendCode(c *gin.Context) {
 
 	var user models.User
 	result := database.DB.Where("uuid = ?", ticket.UserID).First(&user)
-	if result.Error != nil || user.Email == "" {
+	if result.Error != nil || user.Email == "" || utils.IsPlaceholderEmail(user.Email) {
 		respondError(c, http.StatusUnauthorized, CodeUserNotFound, "User not found or email not set")
 		return
 	}
@@ -132,7 +133,7 @@ func (ec *Email2FAController) VerifyCode(c *gin.Context) {
 
 	var user models.User
 	result := database.DB.Where("uuid = ?", ticket.UserID).First(&user)
-	if result.Error != nil || user.Email == "" {
+	if result.Error != nil || user.Email == "" || utils.IsPlaceholderEmail(user.Email) {
 		respondError(c, http.StatusUnauthorized, CodeUserNotFound, "User not found or email not set")
 		return
 	}

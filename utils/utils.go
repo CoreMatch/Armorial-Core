@@ -25,6 +25,10 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
+func IsPlaceholderEmail(email string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(email)), "@placeholder.invalid")
+}
+
 func GenerateRandomToken(length int) string {
 	bytes := make([]byte, length)
 	_, err := rand.Read(bytes)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
 
 type EmailService struct{}
@@ -23,6 +24,9 @@ func NewEmailService() *EmailService {
 }
 
 func (es *EmailService) SendMail(to, subject, message string) error {
+	if utils.IsPlaceholderEmail(to) {
+		return fmt.Errorf("placeholder email is not deliverable")
+	}
 	smtpConfig := config.AppConfig.SMTP
 
 	from := smtpConfig.FromEmail

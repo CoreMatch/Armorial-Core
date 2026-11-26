@@ -61,8 +61,8 @@ func (usc *UserSecurityController) SendChangeEmailCode(c *gin.Context) {
 	}
 	user := authResult.User
 
-	if user.Email == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "User has no email set")
+	if user.Email == "" || utils.IsPlaceholderEmail(user.Email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "User has no deliverable email set")
 		return
 	}
 
@@ -127,7 +127,7 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 		return
 	}
 
-	if !isValidEmail(req.NewEmail) {
+	if !isValidEmail(req.NewEmail) || utils.IsPlaceholderEmail(req.NewEmail) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid new email format")
 		return
 	}

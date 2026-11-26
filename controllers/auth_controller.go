@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
@@ -137,6 +139,10 @@ func (ac *AuthController) UserExists(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email format")
 		return
 	}
+	if utils.IsPlaceholderEmail(email) {
+		respondOK(c, "user existence checked", gin.H{"exists": false})
+		return
+	}
 
 	var count int64
 	if err := database.DB.Model(&models.User{}).Where("email = ?", email).Count(&count).Error; err != nil {
@@ -147,27 +153,17 @@ func (ac *AuthController) UserExists(c *gin.Context) {
 	respondOK(c, "user existence checked", gin.H{"exists": count > 0})
 }
 
-// ClaimUserInternal handles POST /internal/claim-user. It provisions the core
-// user for a proxy-registered game account that is being claimed through
-// HRPAuth-Yggdrasil-API (POST /admin/claim-user): the caller (a satellite
-// service with ops-level auth) supplies username/email/password and this
-// endpoint creates the matching core user with verified=true, restoring the
-// pre-split claim semantics (email uniqueness enforced, cbh flip happens on
-// the game side).
-//
-// Idempotency: if the username already belongs to a user with the same
-// email, that user is returned again (a retried claim after a game-side
-// failure must not strand the provisioned core user). The same username
-// with a different email is a conflict.
 func (ac *AuthController) ClaimUserInternal(c *gin.Context) {
 	if !RequireAuthLevel(c, SecurityLevelOps) {
 		return
 	}
 
 	var req struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Username    string  `json:"username"`
+		Email       *string `json:"email"`
+		Password    string  `json:"password"`
+		MigrationID string  `json:"migration_id"`
+		EmailMode   string  `json:"email_mode"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
@@ -179,62 +175,72 @@ func (ac *AuthController) ClaimUserInternal(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, CodeUsernameTooShort, "Username too short")
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(req.Email))
-	if !isValidEmail(email) {
-		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
-		return
-	}
 	if len(req.Password) < 6 {
 		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
 		return
 	}
 
-	// Idempotency first: a retried claim (username + same email) must map to
-	// the already-provisioned user instead of tripping the email uniqueness
-	// check below.
-	var existing models.User
-	if err := database.DB.Where("username = ?", username).First(&existing).Error; err == nil {
-		if existing.Email == email {
-			respondOK(c, "User claimed", gin.H{"uid": existing.UID, "uuid": existing.UUID})
+	mode := strings.TrimSpace(req.EmailMode)
+	if mode == "" {
+		mode = "provided"
+	}
+	if mode != "provided" && mode != "placeholder" {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Invalid email mode")
+		return
+	}
+	migrationID := strings.TrimSpace(req.MigrationID)
+	if migrationID != "" {
+		parsed, err := uuid.Parse(migrationID)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Invalid migration ID")
 			return
 		}
-		respondError(c, http.StatusConflict, CodeUsernameAlreadyBound, "Username already bound")
-		return
+		migrationID = parsed.String()
 	}
 
-	// Email uniqueness across all core users (restored pre-split rule).
-	var emailCount int64
-	database.DB.Model(&models.User{}).Where("email = ?", email).Count(&emailCount)
-	if emailCount > 0 {
-		respondError(c, http.StatusConflict, CodeEmailAlreadyRegistered, "Email already registered")
-		return
+	var email string
+	verified := true
+	if mode == "placeholder" {
+		if migrationID == "" || req.Email != nil {
+			respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Placeholder email requires a migration ID and omitted email")
+			return
+		}
+		email = "migration-" + migrationID + "@placeholder.invalid"
+		verified = false
+	} else {
+		if req.Email == nil {
+			respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+			return
+		}
+		email = strings.ToLower(strings.TrimSpace(*req.Email))
+		if !isValidEmail(email) || utils.IsPlaceholderEmail(email) {
+			respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+			return
+		}
 	}
 
-	hash, err := utils.HashPassword(req.Password)
+	result, err := services.NewMigrationService().ClaimUser(services.ClaimUserInput{
+		Username: username, Email: email, Password: req.Password, MigrationID: migrationID, Verified: verified,
+	})
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, CodeInternalError, "Password hashing failed")
+		switch {
+		case errors.Is(err, services.ErrMigrationConflict):
+			respondError(c, http.StatusConflict, CodeMigrationConflict, "Migration identity conflicts with an existing claim")
+		case errors.Is(err, services.ErrMigrationInvalidState):
+			respondError(c, http.StatusConflict, CodeMigrationInvalidState, "Migration ID is not claimable")
+		case errors.Is(err, services.ErrUsernameAlreadyBound):
+			respondError(c, http.StatusConflict, CodeUsernameAlreadyBound, "Username already bound")
+		case errors.Is(err, services.ErrEmailAlreadyRegistered):
+			respondError(c, http.StatusConflict, CodeEmailAlreadyRegistered, "Email already registered")
+		default:
+			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to claim user")
+		}
 		return
 	}
 
-	var maxUID uint
-	database.DB.Model(&models.User{}).Select("COALESCE(MAX(uid), 0)").Scan(&maxUID)
-	now := time.Now()
-	user := models.User{
-		UID:        maxUID + 1,
-		UUID:       utils.GenerateUnsignedUUID(),
-		Email:      email,
-		Username:   username,
-		Password:   hash,
-		LastSignAt: &now,
-		RegisterAt: &now,
-		Verified:   true,
-	}
-	if err := database.DB.Create(&user).Error; err != nil {
-		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to create user")
-		return
-	}
-
-	respondOK(c, "User claimed", gin.H{"uid": user.UID, "uuid": user.UUID})
+	respondOK(c, "User claimed", gin.H{
+		"uid": result.UID, "uuid": result.UUID, "email": result.Email, "created": result.Created,
+	})
 }
 
 // Register handles POST /register.
@@ -257,7 +263,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 
 	// Email required and validated.
 	email := req.Email
-	if !isValidEmail(email) {
+	if !isValidEmail(email) || utils.IsPlaceholderEmail(email) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
@@ -371,6 +377,11 @@ func (ac *AuthController) ForgotPassword(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, CodeCaptchaInvalid, "Invalid captcha format")
 		return
 	}
+	successMsg := "If the email is registered, a verification code has been sent."
+	if utils.IsPlaceholderEmail(email) {
+		respondOK(c, successMsg, nil)
+		return
+	}
 
 	// 2. Captcha Verification
 	captchaService := services.NewCaptchaService()
@@ -384,14 +395,16 @@ func (ac *AuthController) ForgotPassword(c *gin.Context) {
 	err := database.DB.Where("email = ?", email).First(&user).Error
 
 	// Always respond success to prevent email enumeration
-	successMsg := "If the email is registered, a verification code has been sent."
-
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondOK(c, successMsg, nil)
 			return
 		}
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Database error")
+		return
+	}
+	if utils.IsPlaceholderEmail(user.Email) {
+		respondOK(c, successMsg, nil)
 		return
 	}
 
@@ -440,6 +453,11 @@ func (ac *AuthController) ResetPassword(c *gin.Context) {
 
 	if len(req.NewPassword) < 6 {
 		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
+		return
+	}
+
+	if utils.IsPlaceholderEmail(email) {
+		respondError(c, http.StatusBadRequest, CodeVerificationCodeInvalid, "Invalid or expired verification code")
 		return
 	}
 

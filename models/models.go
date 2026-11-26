@@ -30,6 +30,23 @@ func (User) TableName() string {
 	return "users"
 }
 
+type CoreUserMigration struct {
+	MigrationID  string     `gorm:"type:varchar(36);primaryKey;column:migration_id"`
+	UID          uint       `gorm:"column:uid;default:0"`
+	UUID         string     `gorm:"type:varchar(32);column:uuid;default:''"`
+	Email        string     `gorm:"type:varchar(255);column:email"`
+	Username     string     `gorm:"type:varchar(255);column:username"`
+	Ownership    string     `gorm:"type:varchar(32);column:ownership"`
+	Status       string     `gorm:"type:varchar(32);column:status"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+	UpdatedAt    time.Time  `gorm:"column:updated_at"`
+	RolledBackAt *time.Time `gorm:"column:rolled_back_at"`
+}
+
+func (CoreUserMigration) TableName() string {
+	return "core_user_migrations"
+}
+
 type OAuth2Client struct {
 	ID           uint      `gorm:"primaryKey;autoIncrement;column:id"`
 	ClientID     string    `gorm:"type:varchar(100);uniqueIndex;column:client_id"`

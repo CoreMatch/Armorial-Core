@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
+	"github.com/lnb/HRPAuth-Backend-Go/services"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -28,7 +31,7 @@ func setupClaimTestEnv(t *testing.T) *gin.Engine {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.CoreUserMigration{}); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
 	database.DB = db
@@ -44,6 +47,18 @@ func setupClaimTestEnv(t *testing.T) *gin.Engine {
 func doClaimRequest(t *testing.T, r *gin.Engine, token, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/internal/claim-user", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func doAuthRequest(t *testing.T, r *gin.Engine, token, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -83,6 +98,10 @@ func TestClaimUserInternalCreatesVerifiedUser(t *testing.T) {
 	}
 	if user.Password == "secret1" {
 		t.Fatal("password must be hashed")
+	}
+	envelope := claimEnvelope(t, w)
+	if envelope["email"] != "steve@example.com" || envelope["created"] != true {
+		t.Fatalf("claim response = %#v", envelope)
 	}
 }
 
@@ -144,6 +163,116 @@ func TestClaimUserInternalIsIdempotentForSameUsernameAndEmail(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("user count = %d, want 1", count)
 	}
+	firstData := claimEnvelope(t, first)
+	secondData := claimEnvelope(t, second)
+	if firstData["created"] != true || secondData["created"] != false || firstData["uuid"] != secondData["uuid"] {
+		t.Fatalf("idempotent claim responses = %#v, %#v", firstData, secondData)
+	}
+}
+
+func TestClaimUserInternalCreatesPlaceholderMigrationUser(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	body := `{"username":"steve","password":"secret1","migration_id":"` + migrationID + `","email_mode":"placeholder"}`
+
+	w := doClaimRequest(t, r, "test-manage-token", body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	envelope := claimEnvelope(t, w)
+	email := "migration-" + migrationID + "@placeholder.invalid"
+	if envelope["email"] != email || envelope["created"] != true {
+		t.Fatalf("claim response = %#v", envelope)
+	}
+
+	var user models.User
+	if err := database.DB.Where("username = ?", "steve").First(&user).Error; err != nil {
+		t.Fatalf("user not persisted: %v", err)
+	}
+	if user.Email != email || user.Verified || !utils.CheckPasswordHash("secret1", user.Password) {
+		t.Fatalf("placeholder user = %+v", user)
+	}
+	var journal models.CoreUserMigration
+	if err := database.DB.Where("migration_id = ?", migrationID).First(&journal).Error; err != nil {
+		t.Fatalf("migration journal missing: %v", err)
+	}
+	if journal.Status != "created" || journal.Ownership != "created_by_migration" || journal.UID != user.UID || journal.UUID != user.UUID {
+		t.Fatalf("migration journal = %+v", journal)
+	}
+}
+
+func TestClaimUserInternalMigrationRetryIsIdempotent(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	body := `{"username":"steve","email":"steve@example.com","password":"secret1","migration_id":"00000000-0000-4000-8000-000000000001"}`
+
+	first := doClaimRequest(t, r, "test-manage-token", body)
+	second := doClaimRequest(t, r, "test-manage-token", body)
+	if first.Code != http.StatusOK || second.Code != http.StatusOK {
+		t.Fatalf("claim statuses = %d, %d", first.Code, second.Code)
+	}
+	firstData := claimEnvelope(t, first)
+	secondData := claimEnvelope(t, second)
+	if firstData["created"] != true || secondData["created"] != false || firstData["uuid"] != secondData["uuid"] {
+		t.Fatalf("migration retry responses = %#v, %#v", firstData, secondData)
+	}
+	var count int64
+	database.DB.Model(&models.User{}).Where("username = ?", "steve").Count(&count)
+	if count != 1 {
+		t.Fatalf("user count = %d, want 1", count)
+	}
+}
+
+func TestClaimUserInternalRejectsMigrationIdentityReuse(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	first := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","email":"steve@example.com","password":"secret1","migration_id":"00000000-0000-4000-8000-000000000001"}`)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first claim status = %d, body = %s", first.Code, first.Body.String())
+	}
+
+	conflict := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","email":"other@example.com","password":"secret1","migration_id":"00000000-0000-4000-8000-000000000001"}`)
+	if conflict.Code != http.StatusConflict || claimEnvelope(t, conflict)["code"] != CodeMigrationConflict {
+		t.Fatalf("identity reuse response = %d %s", conflict.Code, conflict.Body.String())
+	}
+}
+
+func TestClaimUserInternalRecordsPreexistingMigrationUser(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	if err := database.DB.Create(&models.User{
+		UID: 7, UUID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Email: "steve@example.com", Username: "steve", Password: "hash", Verified: true,
+	}).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	w := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","email":"steve@example.com","password":"secret1","migration_id":"00000000-0000-4000-8000-000000000001"}`)
+	if w.Code != http.StatusOK || claimEnvelope(t, w)["created"] != false {
+		t.Fatalf("preexisting claim = %d %s", w.Code, w.Body.String())
+	}
+	var journal models.CoreUserMigration
+	if err := database.DB.Where("migration_id = ?", "00000000-0000-4000-8000-000000000001").First(&journal).Error; err != nil {
+		t.Fatalf("migration journal missing: %v", err)
+	}
+	if journal.Status != "not_created" || journal.Ownership != "preexisting" || journal.UID != 7 {
+		t.Fatalf("preexisting journal = %+v", journal)
+	}
+}
+
+func TestClaimUserInternalRejectsRolledBackMigrationID(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	migrationID := "00000000-0000-4000-8000-000000000001"
+	if err := database.DB.Create(&models.CoreUserMigration{
+		MigrationID: migrationID, Email: "steve@example.com", Username: "steve", Ownership: "created_by_migration", Status: "rolled_back",
+	}).Error; err != nil {
+		t.Fatalf("seed migration: %v", err)
+	}
+
+	w := doClaimRequest(t, r, "test-manage-token",
+		`{"username":"steve","email":"steve@example.com","password":"secret1","migration_id":"`+migrationID+`"}`)
+	if w.Code != http.StatusConflict || claimEnvelope(t, w)["code"] != CodeMigrationInvalidState {
+		t.Fatalf("rolled-back claim = %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestClaimUserInternalRequiresOpsAuth(t *testing.T) {
@@ -166,6 +295,12 @@ func TestClaimUserInternalValidation(t *testing.T) {
 		{"short username", `{"username":"ab","email":"a@example.com","password":"secret1"}`, CodeUsernameTooShort},
 		{"invalid email", `{"username":"steve","email":"not-an-email","password":"secret1"}`, CodeInvalidEmail},
 		{"short password", `{"username":"steve","email":"a@example.com","password":"123"}`, CodePasswordTooShort},
+		{"missing email", `{"username":"steve","password":"secret1"}`, CodeInvalidEmail},
+		{"invalid email mode", `{"username":"steve","email":"a@example.com","password":"secret1","email_mode":"other"}`, CodeInvalidRequest},
+		{"placeholder without migration", `{"username":"steve","password":"secret1","email_mode":"placeholder"}`, CodeInvalidRequest},
+		{"placeholder with email", `{"username":"steve","email":"a@example.com","password":"secret1","migration_id":"00000000-0000-4000-8000-000000000001","email_mode":"placeholder"}`, CodeInvalidRequest},
+		{"invalid migration ID", `{"username":"steve","email":"a@example.com","password":"secret1","migration_id":"invalid"}`, CodeInvalidRequest},
+		{"reserved placeholder address", `{"username":"steve","email":"migration-test@placeholder.invalid","password":"secret1"}`, CodeInvalidEmail},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,4 +313,85 @@ func TestClaimUserInternalValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPlaceholderAccountsCannotUseEmailRecovery(t *testing.T) {
+	r := setupClaimTestEnv(t)
+	codeDir := t.TempDir()
+	config.AppConfig.VerificationCode = config.VerificationCodeConfig{CodeTTL: 600, StorageDir: codeDir}
+	ac := NewAuthController()
+	r.POST("/register", ac.Register)
+	r.POST("/forgot-password", ac.ForgotPassword)
+	r.POST("/reset-password", ac.ResetPassword)
+	r.POST("/internal/user-exists", ac.UserExists)
+	r.POST("/email-verification", NewEmailVerificationController().Handle)
+
+	placeholder := "migration-00000000-0000-4000-8000-000000000001@placeholder.invalid"
+	passwordHash, err := utils.HashPassword("secret1")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	if err := database.DB.Create(&models.User{
+		UID: 1, UUID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Email: placeholder, Username: "steve", Password: passwordHash,
+	}).Error; err != nil {
+		t.Fatalf("seed placeholder user: %v", err)
+	}
+
+	assertNoCodes := func(t *testing.T) {
+		t.Helper()
+		entries, err := os.ReadDir(codeDir)
+		if err != nil {
+			t.Fatalf("read code directory: %v", err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("placeholder flow persisted verification codes: %v", entries)
+		}
+	}
+
+	t.Run("forgot password is generic success without mail", func(t *testing.T) {
+		w := doAuthRequest(t, r, "", "/forgot-password", `{"email":"`+placeholder+`","captcha_token":"unused","captcha_code":"ABCD"}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+		}
+		assertNoCodes(t)
+	})
+
+	t.Run("reset password cannot update credentials", func(t *testing.T) {
+		w := doAuthRequest(t, r, "", "/reset-password", `{"email":"`+placeholder+`","code":"1234","new_password":"secret2"}`)
+		if w.Code != http.StatusBadRequest || claimEnvelope(t, w)["code"] != CodeVerificationCodeInvalid {
+			t.Fatalf("reset response = %d %s", w.Code, w.Body.String())
+		}
+		var user models.User
+		if err := database.DB.First(&user, 1).Error; err != nil {
+			t.Fatalf("reload user: %v", err)
+		}
+		if !utils.CheckPasswordHash("secret1", user.Password) || utils.CheckPasswordHash("secret2", user.Password) {
+			t.Fatal("placeholder password changed")
+		}
+	})
+
+	t.Run("mail capability check reports false", func(t *testing.T) {
+		w := doAuthRequest(t, r, "test-manage-token", "/internal/user-exists", `{"email":"`+placeholder+`"}`)
+		if w.Code != http.StatusOK || userExistsFlag(t, w) {
+			t.Fatalf("user-exists response = %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("public registration rejects reserved namespace", func(t *testing.T) {
+		w := doAuthRequest(t, r, "", "/register", `{"username":"intruder","email":"MIGRATION-x@PLACEHOLDER.INVALID","password":"secret1"}`)
+		if w.Code != http.StatusBadRequest || claimEnvelope(t, w)["code"] != CodeInvalidEmail {
+			t.Fatalf("register response = %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("verification mail cannot target placeholder", func(t *testing.T) {
+		w := doAuthRequest(t, r, "", "/email-verification", `{"action":"send-verification-code","email":"`+placeholder+`"}`)
+		if w.Code != http.StatusBadRequest || claimEnvelope(t, w)["code"] != CodeInvalidEmail {
+			t.Fatalf("verification response = %d %s", w.Code, w.Body.String())
+		}
+		assertNoCodes(t)
+		if err := services.NewEmailService().SendMail(placeholder, "subject", "message"); err == nil {
+			t.Fatal("mail service accepted a placeholder recipient")
+		}
+	})
 }
